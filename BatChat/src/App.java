@@ -1,6 +1,5 @@
 //package com.mycompany.batchat;
 
-
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -63,14 +62,100 @@ public class App extends Application {
         Label loginMessage = new Label();
         loginMessage.setStyle("-fx-text-fill: red;");
 
+        Button createAccountButton = new Button("Create Account");
+        createAccountButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
+
+
         loginLayout.add(usernameLabel, 0, 1);
         loginLayout.add(usernameField, 1, 1);
         loginLayout.add(passwordLabel, 0, 2);
         loginLayout.add(passwordField, 1, 2);
         loginLayout.add(loginButton, 1, 3);
-        loginLayout.add(loginMessage, 1, 4);
+        loginLayout.add(loginMessage, 1, 5);
+        loginLayout.add(createAccountButton, 1, 4); // Position it below the login button
 
         Scene loginScene = new Scene(loginLayout, 400, 600);
+
+        // --- CREATE ACCOUNT SCREEN ---
+        VBox createAccountLayout = new VBox(10);
+        createAccountLayout.setPadding(new Insets(20));
+        createAccountLayout.setAlignment(Pos.CENTER);
+        createAccountLayout.setStyle("-fx-background-color: black;");
+
+        Label fullNameLabel = new Label("Full Name:");
+        fullNameLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        TextField fullNameField = new TextField();
+        fullNameField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        Label createUsernameLabel = new Label("Username:");
+        createUsernameLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        TextField createUsernameField = new TextField();
+        createUsernameField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        Label createPasswordLabel = new Label("Password:");
+        createPasswordLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        PasswordField createPasswordField = new PasswordField();
+        createPasswordField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        Label confirmPasswordLabel = new Label("Confirm Password:");
+        confirmPasswordLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        PasswordField confirmPasswordField = new PasswordField();
+        confirmPasswordField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        Button createAccountSubmitButton = new Button("Create Account");
+        createAccountSubmitButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
+        Label accountMessage = new Label();
+        accountMessage.setStyle("-fx-text-fill: red;");
+
+        createAccountLayout.getChildren().addAll(
+                createUsernameLabel, createUsernameField,
+                fullNameLabel, fullNameField,
+                createPasswordLabel, createPasswordField,
+                confirmPasswordLabel, confirmPasswordField,
+                createAccountSubmitButton, accountMessage
+        );
+
+        Scene createAccountScene = new Scene(createAccountLayout, 400, 600);
+
+
+        // --- ACTION HANDLERS ---
+
+        // Go to Create Account screen
+        createAccountButton.setOnAction(event -> {
+            primaryStage.setScene(createAccountScene);
+        });
+
+        // Handle account creation
+        createAccountSubmitButton.setOnAction(event -> {
+            String newName = createUsernameField.getText().trim();
+            String newPass = createPasswordField.getText().trim();
+            String confirmPassword = confirmPasswordField.getText().trim();
+            String fullName = fullNameField.getText().trim();
+
+            if (!newPass.equals(confirmPassword)) {
+                accountMessage.setText("Passwords do not match!");
+            } else if (newName.isEmpty() || newPass.isEmpty() || fullName.isEmpty()) {
+                accountMessage.setText("All fields must be filled!");
+            } else if (dbManager.usernameExists(newName)) {
+                accountMessage.setText("Username already exists!");
+            } else {
+                User newUser = new User(newName, newPass, fullName);
+                boolean success = dbManager.createUser(newUser);  // Attempt to create the user
+
+                if (success) {
+                    accountMessage.setText("Account created successfully!");
+                    primaryStage.setScene(loginScene); // Go back to the login page
+                } else {
+                    accountMessage.setText("Account creation failed! Please try again.");
+                }
+            }
+        });
+
+
+        // Set the initial scene to login screen
+        primaryStage.setScene(loginScene);
+        primaryStage.setTitle("Login");
+        primaryStage.show();
 
         // --- MAIN SCREEN ---
         VBox mainLayout = new VBox(10);
@@ -174,7 +259,7 @@ public class App extends Application {
                 }
             }
         });
-// --- GROUP CHATROOM SCREEN ---
+// --- GROUP CHATROOM SCREEN --- 
         BorderPane groupChatLayout = new BorderPane();
         ListView<Node> groupMessageList = new ListView<>(); // Use ListView<Node> for text and images
         TextField groupMessageField = new TextField();
@@ -216,19 +301,20 @@ public class App extends Application {
             primaryStage.setScene(loginScene);
         });
 
+
+
         // --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
-            List<GroupChat> groupChats = dbManager.getAllGroups();  // Fetch all GroupChat objects
+            List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
 
             // Use Collectors to map GroupChat objects to their RoomNames (Strings)
             List<String> groupNames = groupChats.stream()
-                    .map(GroupChat::getRoomName)  // Get the RoomName of each GroupChat
-                    .collect(Collectors.toList());  // Collect them into a list of strings
+                    .map(GroupChat::getRoomName) // Get the RoomName of each GroupChat
+                    .collect(Collectors.toList()); // Collect them into a list of strings
 
-            // Populate the ListView with the list of group names (strings)
             groupListView.getItems().setAll(groupNames);
 
-            primaryStage.setScene(groupListScene);  // Switch to the group list scene
+            primaryStage.setScene(groupListScene);
         });
 
         // --- Create group button action ---
@@ -242,7 +328,7 @@ public class App extends Application {
 
 
 
-// --- Enter group button action ---
+        // --- Enter group button action ---
         enterGroupButton.setOnAction(e -> {
             String selectedGroup = groupListView.getSelectionModel().getSelectedItem(); // Get selected group
             if (selectedGroup != null) {
