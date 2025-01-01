@@ -8,21 +8,25 @@ class User {
     private String username;
     private String password;
     private String status;
+    private String fullName;
 
-    public User(int userID, String username, String password, String status) {
+    public User(int userID, String username, String password, String status,String fullName) {
         this.userID = userID;
         this.username = username;
         this.password = password;
         this.status = status;
+        this.fullName=fullName;
     }
+
+
     public User(String username) {
         this.username = username;
     }
 
-    public User(String username, String password, String status) {
+    public User(String username, String password, String fullname) {
         this.username = username;
         this.password = password;
-        this.status = status;
+        this.fullName = fullname;
     }
 
     public int getUserID() {
@@ -60,7 +64,16 @@ class User {
     public void updateStatus(String status) {
         this.status = status;
     }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
 }
+
 
 // Message Class
 class Message {
