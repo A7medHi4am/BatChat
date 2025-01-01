@@ -111,8 +111,6 @@ class DatabaseManager {
 
 
                 User user = new User(username, password, status);
-
-
                 onlineUsers.add(user);
             }
         } catch (SQLException e) {
@@ -196,11 +194,21 @@ class DatabaseManager {
         }
 
         String query = "INSERT INTO GroupChat (RoomName, CreatedBy) VALUES (?, ?)";
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+        try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, roomName);
             stmt.setInt(2, createdBy);
             stmt.executeUpdate();
-            return true;
+
+            // Ensure the group chat is saved by checking the generated keys
+            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    int chatRoomID = generatedKeys.getInt(1);
+                    System.out.println("Group chat created with ID: " + chatRoomID);
+                    return true;
+                } else {
+                    throw new SQLException("Creating group chat failed, no ID obtained.");
+                }
+            }
         } catch (SQLException e) {
             System.err.println("Error creating group chat: " + e.getMessage());
             return false;
@@ -229,6 +237,30 @@ class DatabaseManager {
         }
     }
 
+    // Get all group chats the user is a participant in
+    public List<GroupChat> getUserGroups(String username) {
+        List<GroupChat> groups = new ArrayList<>();
+        String query = "SELECT gc.RoomName FROM GroupChat gc "
+                + " INNER JOIN GroupChatParticipant gcp"
+                + " ON gc.ChatRoomID = gcp.ChatRoomID"
+                + " INNER JOIN User u ON gcp.UserID = u.userID"
+                + " WHERE u.username = ?";
+
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setString(1, username); // Set the username for the query
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String roomName = rs.getString("RoomName");
+                    groups.add(new GroupChat(roomName)); // Add the group object
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching user group chats: " + e.getMessage());
+        }
+
+        return groups;
+    }
+
     // Get all group chat names
     public List<GroupChat> getAllGroups() {
         List<GroupChat> groups = new ArrayList<>();
@@ -248,8 +280,6 @@ class DatabaseManager {
 
         return groups;
     }
-
-
     // Save a message in a group chat
     public void saveGroupMessage(String roomName, String senderUsername, String message) {
         int senderId = getUserIdByUsername(senderUsername);
@@ -381,6 +411,38 @@ class DatabaseManager {
             System.err.println("Error fetching attachments: " + e.getMessage());
         }
         return attachments;
+    }
+
+    // Check if a username already exists in the database
+    public boolean usernameExists(String username) {
+        String query = "SELECT COUNT(*) FROM user WHERE username = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // Insert a new user into the database
+    public boolean createUser(User user) {
+        String query = "INSERT INTO user (username, password, full_name) VALUES (?, ?, ?)";
+
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setString(1, user.getUsername());
+            stmt.setString(2, user.getPassword());
+            stmt.setString(3, user.getFullName());
+
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;  // Returns true if user was successfully created
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
 
