@@ -4,20 +4,25 @@
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.*;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.List;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class App extends Application {
     private String currentUser;
@@ -38,7 +43,6 @@ public class App extends Application {
 
         // Load the logo image
         Image logo = new Image("BatChat.jpg");
-
         ImageView logoView = new ImageView(logo);
         logoView.setFitHeight(300);
         logoView.setFitWidth(300);
@@ -108,7 +112,7 @@ public class App extends Application {
         Scene usersScene = new Scene(usersLayout, 400, 600);
 
         // --- CHAT SCREEN ---
-        ListView<String> messageList = new ListView<>();
+        ListView<Node> messageList = new ListView<>();
         TextField messageField = new TextField();
         messageField.setPromptText("Type a message...");
         Button sendButton = new Button("Send");
@@ -159,17 +163,27 @@ public class App extends Application {
         Button backToMainButton = new Button("Back");
         groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, enterGroupButton, backToMainButton);
         Scene groupListScene = new Scene(groupListLayout, 400, 600);
-
-        // --- GROUP CHATROOM SCREEN ---
+        mainScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (privateChatButton.isFocused()) {
+                    privateChatButton.fire();
+                } else if (groupChatButton.isFocused()) {
+                    groupChatButton.fire();
+                } else if (logoutButton.isFocused()) {
+                    logoutButton.fire();
+                }
+            }
+        });
+// --- GROUP CHATROOM SCREEN ---
         BorderPane groupChatLayout = new BorderPane();
-        ListView<String> groupMessageList = new ListView<>();
+        ListView<Node> groupMessageList = new ListView<>(); // Use ListView<Node> for text and images
         TextField groupMessageField = new TextField();
         groupMessageField.setPromptText("Type a message...");
         Button groupSendButton = new Button("Send");
         Button groupBackButton = new Button("Back");
+        Button groupAttachButton = new Button("Attach"); // New attach button for group chat
 
-
-        HBox groupInputBox = new HBox(10, groupMessageField, groupSendButton);
+        HBox groupInputBox = new HBox(10, groupMessageField, groupSendButton, groupAttachButton); // Include attach button
         groupInputBox.setPadding(new Insets(10));
         groupInputBox.setAlignment(Pos.CENTER);
 
@@ -181,6 +195,7 @@ public class App extends Application {
         groupChatLayout.setCenter(groupMessageList);
         groupChatLayout.setBottom(groupInputBox);
         Scene groupChatScene = new Scene(groupChatLayout, 400, 600);
+
 
         // --- Login button action ---
         loginButton.setOnAction(e -> {
@@ -203,11 +218,18 @@ public class App extends Application {
 
         // --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
-            List<String> groups = dbManager.getAllGroups();
-            groupListView.getItems().setAll(groups);
-            primaryStage.setScene(groupListScene);
-        });
+            List<GroupChat> groupChats = dbManager.getAllGroups();  // Fetch all GroupChat objects
 
+            // Use Collectors to map GroupChat objects to their RoomNames (Strings)
+            List<String> groupNames = groupChats.stream()
+                    .map(GroupChat::getRoomName)  // Get the RoomName of each GroupChat
+                    .collect(Collectors.toList());  // Collect them into a list of strings
+
+            // Populate the ListView with the list of group names (strings)
+            groupListView.getItems().setAll(groupNames);
+
+            primaryStage.setScene(groupListScene);  // Switch to the group list scene
+        });
 
         // --- Create group button action ---
         createGroupButton.setOnAction(e -> {
@@ -219,20 +241,82 @@ public class App extends Application {
         });
 
 
-        // --- Enter group button action ---
+
+// --- Enter group button action ---
         enterGroupButton.setOnAction(e -> {
             String selectedGroup = groupListView.getSelectionModel().getSelectedItem(); // Get selected group
             if (selectedGroup != null) {
                 groupMessageList.getItems().clear(); // Clear the group message list
-                List<String> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Updated method for fetching group chat messages
-                groupMessageList.getItems().setAll(groupMessages);
+                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Updated method for fetching group chat messages
+
+                // Populate the message list with formatted messages
+                for (Message message : groupMessages) {
+                    String messageContent = message.getContent();
+                    File file = new File(messageContent);
+
+                    if (file.exists()) { // Check if it's a valid file path
+                        Label senderLabel = new Label(message.getSender() + ": ");
+                        groupMessageList.getItems().add(senderLabel);
+
+                        Image image = new Image("file:" + file.getPath());
+                        ImageView imageView = new ImageView(image);
+                        imageView.setFitHeight(100);
+                        imageView.setPreserveRatio(true);
+                        groupMessageList.getItems().add(imageView);
+                    } else {
+                        groupMessageList.getItems().add(new Label(message.getSender() + ": " + messageContent));
+                    }
+                }
 
                 groupSendButton.setOnAction(ev -> {
-                    String message = groupMessageField.getText().trim();
-                    if (!message.isEmpty()) {
-                        dbManager.saveGroupMessage(selectedGroup, currentUser, message); // Updated method for saving group messages
-                        groupMessageList.getItems().add(currentUser + ": " + message);  // Update UI
-                        groupMessageField.clear();                                     // Clear input field
+                    String messageContent = groupMessageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent); // Save text message
+                        groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
+                        groupMessageField.clear();
+                    }
+                });
+
+                groupAttachButton.setOnAction(ev -> {
+                    FileChooser groupFileChooser = new FileChooser();
+                    groupFileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+                    File file = groupFileChooser.showOpenDialog(primaryStage);
+                    if (file != null) {
+                        try {
+                            // Save file to attachment directory
+                            File targetDir = new File("src/main/resources/attachment");
+                            if (!targetDir.exists()) {
+                                targetDir.mkdirs();
+                            }
+
+                            File targetFile = new File(targetDir, file.getName());
+                            Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                            // Save the file path as the message content
+                            String filePath = targetFile.getPath();
+                            int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
+
+                            if (messageID != -1) {
+                                // Save attachment metadata
+                                String fileType = Files.probeContentType(file.toPath());
+                                int fileSize = (int) file.length() / 1024; // File size in KB
+                                dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
+
+                                // Display the attachment in the chat
+                                Label senderLabel = new Label(currentUser + ": ");
+                                groupMessageList.getItems().add(senderLabel);
+
+                                Image image = new Image("file:" + filePath);
+                                ImageView imageView = new ImageView(image);
+                                imageView.setFitHeight(100);
+                                imageView.setPreserveRatio(true);
+                                groupMessageList.getItems().add(imageView);
+                            } else {
+                                System.err.println("Failed to save group message. Attachment not saved.");
+                            }
+                        } catch (IOException ex) {
+                            System.err.println("Error uploading file: " + ex.getMessage());
+                        }
                     }
                 });
 
@@ -241,7 +325,15 @@ public class App extends Application {
             }
         });
 
-
+        groupChatScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (groupSendButton.isFocused()) {
+                    groupSendButton.fire();
+                } else if (groupBackButton.isFocused()) {
+                    groupBackButton.fire();
+                }
+            }
+        });
         // --- Back to main button action ---
         backToMainButton.setOnAction(e -> primaryStage.setScene(mainScene));
         // --- Private Chat List Screen ---
@@ -260,98 +352,321 @@ public class App extends Application {
 
 // --- Private Chat Button Action ---
         privateChatButton.setOnAction(e -> {
-            List<String> contacts = dbManager.getOnlineUsers(currentUser); // Fetch all contacts
-            privateChatListView.getItems().setAll(contacts);    // Populate the list
-            primaryStage.setScene(privateChatListScene);        // Switch to private chat list scene
+            List<User> contacts = dbManager.getOnlineUsers(currentUser);
+
+
+            List<String> usernames = contacts.stream()
+                    .map(User::getUsername)
+                    .collect(Collectors.toList());
+
+            privateChatListView.getItems().setAll(usernames);
+            primaryStage.setScene(privateChatListScene);
         });
 
-// --- Private Chat List Actions ---
+
+        chatScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (sendButton.isFocused()) {
+                    sendButton.fire();
+                } else if (backButton.isFocused()) {
+                    backButton.fire();
+                }
+            }
+        });
+
         privateChatListView.setOnMouseClicked(event -> {
             String selectedContact = privateChatListView.getSelectionModel().getSelectedItem();
             if (selectedContact != null) {
-                messageList.getItems().clear();                     // Clear the message list
-                List<String> chatHistory = dbManager.getChatHistory(currentUser, selectedContact); // Fetch chat history
-                messageList.getItems().setAll(chatHistory);
+                // Clear the message list once before adding new content
+                messageList.getItems().clear();
 
+                // Fetch chat history for the selected contact
+                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedContact);
+
+                // Iterate over each message in the chat history
+                chatHistory.forEach(message -> {
+                    // Check if the message content is a file path (i.e., it represents an attachment)
+                    String messageContent = message.getContent();
+                    File file = new File(messageContent); // Check if the content is a valid file path
+
+                    // Fetch and display attachments if the content is a file path
+                    if (file.exists()) {
+                        // Display the sender's name with the attachment
+                        Label senderLabel = new Label(message.getSender() + ": ");
+                        messageList.getItems().add(senderLabel); // Add sender label to the chat
+                        // Display image attachments first
+                        Image image = new Image("file:" + file.getPath());
+                        ImageView imageView = new ImageView(image);
+                        imageView.setFitHeight(100); // Set a fixed height for images
+                        imageView.setPreserveRatio(true); // Preserve the image ratio
+                        messageList.getItems().add(imageView); // Add image to the message list
+                    } else {
+                        // If it's not a file path, display the message content (text)
+                        Label textLabel = new Label(message.getSender() + ": " + messageContent);
+                        messageList.getItems().add(textLabel); // Add message to the chat
+                    }
+                });
+                // Send button action
                 sendButton.setOnAction(ev -> {
-                    String message = messageField.getText().trim();
-                    if (!message.isEmpty()) {
-                        dbManager.saveMessage(currentUser, selectedContact, message); // Save message
-                        messageList.getItems().add(currentUser + ": " + message); // Using currentUser as the sender
-                        messageField.clear();                                        // Clear input field
+                    String messageContent = messageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        int messageID = dbManager.saveMessage(currentUser, selectedContact, messageContent); // Save the text message
+                        if (messageID != -1) {
+                            Label textLabel = new Label(currentUser + ": " + messageContent);
+                            messageList.getItems().add(textLabel); // Display the text message in the chat
+                            messageField.clear(); // Clear the input field
+                        } else {
+                            System.err.println("Failed to save the message.");
+                        }
                     }
                 });
 
-                backButton.setOnAction(ev -> primaryStage.setScene(privateChatListScene)); // Back to private chat list
-                primaryStage.setScene(chatScene);                                         // Switch to private chat scene
-            }
+                // Attachment button action
+                attachButton.setOnAction(e -> {
+                    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+                    File file = fileChooser.showOpenDialog(primaryStage);
+                    if (file != null) {
+                        try {
+                            // Create directory to store the file if it doesn't exist
+                            File targetDir = new File("src/main/resources/attachment");
+                            if (!targetDir.exists()) {
+                                targetDir.mkdirs(); // Create directories if they don't exist
+                            }
 
-            attachButton.setOnAction(e -> {
-                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
-                File file = fileChooser.showOpenDialog(primaryStage);
+                            // Create a target file with the same name as the original file
+                            File targetFile = new File(targetDir, file.getName());
+                            Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-                if (file != null) {
-                    try {
-                        // Define the target directory
-                        File targetDir = new File("src/main/resources/attachment");
-                        if (!targetDir.exists()) {
-                            targetDir.mkdirs(); // Create directories if they do not exist
+                            // Save the message content as the file path (instead of a placeholder)
+                            String messageContent = targetFile.getPath();  // Store the file path in the message content
+                            int messageID = dbManager.saveMessage(currentUser, selectedContact, messageContent); // Save the message with file path
+
+                            if (messageID != -1) {
+                                // Save the attachment metadata in the database
+                                String filePath = targetFile.getPath();
+                                String fileType = Files.probeContentType(file.toPath());
+                                int fileSize = (int) file.length() / 1024; // File size in KB
+                                dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
+
+                                // Display the sender's name first, then the image
+                                Label senderLabel = new Label(currentUser + ": ");
+                                messageList.getItems().add(senderLabel); // Add sender label to the chat
+
+                                // Display the image attachment
+                                Image image = new Image("file:" + filePath);
+                                ImageView imageView = new ImageView(image);
+                                imageView.setFitHeight(100); // Set a fixed height for images
+                                imageView.setPreserveRatio(true); // Preserve image aspect ratio
+                                messageList.getItems().add(imageView); // Add image to the message list
+                            } else {
+                                System.err.println("Failed to save message. Attachment not saved.");
+                            }
+                        } catch (IOException ex) {
+                            System.err.println("Error uploading file: " + ex.getMessage());
                         }
-
-                        // Copy the file to the target directory
-                        File targetFile = new File(targetDir, file.getName());
-                        Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                        // Save the message and get the generated messageID
-                        String placeholderMessage = "[Attachment]";
-                        int messageID = dbManager.saveMessage(currentUser, selectedContact, placeholderMessage);
-
-                        if (messageID != -1) {
-                            // Save the attachment
-                            String filePath = targetFile.getPath();
-                            String fileType = Files.probeContentType(file.toPath());
-                            int fileSize = (int) file.length() / 1024; // Size in KB
-
-                            dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
-
-                            // Display in the UI
-                            messageList.getItems().add("You attached: " + file.getName());
-                        } else {
-                            System.err.println("Failed to save message. Attachment not saved.");
-                        }
-                    } catch (IOException ex) {
-                        System.err.println("Error uploading file: " + ex.getMessage());
                     }
-                }
-            });
+                });
+
+                // Back button action
+                backButton.setOnAction(ev -> primaryStage.setScene(privateChatListScene)); // Back to private chat list
+                primaryStage.setScene(chatScene); // Switch to private chat scene
+            }
         });
 
 
+// Handle Enter key for navigation
+        privateChatListScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (privateChatBackButton.isFocused()) {
+                    privateChatBackButton.fire();
+                }
+            }
+        });
 
-
-// --- Back Button in Private Chat List ---
+// Back Button in Private Chat List
         privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
-        // --- Users list action ---
+
+// Users list action
         usersListView.setOnMouseClicked(event -> {
             String selectedUser = usersListView.getSelectionModel().getSelectedItem();
             if (selectedUser != null) {
+                // Clear the message list
                 messageList.getItems().clear();
-                List<String> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
-                messageList.getItems().setAll(chatHistory);
 
+                // Fetch and map chat history to displayable strings using streams
+                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
+                List<String> displayableChatHistory = chatHistory.stream()
+                        .map(message -> message.getSender() + ": " + message.getContent())  // Only show username and message content
+                        .collect(Collectors.toList());
+                messageList.getItems().clear(); // Clear any existing items
+                displayableChatHistory.forEach(chat -> {
+                    Label textLabel = new Label(chat); // Wrap each string in a Label
+                    messageList.getItems().add(textLabel); // Add the Label to the message list
+                });
+
+                // Send button action
                 sendButton.setOnAction(ev -> {
-                    String message = messageField.getText().trim();
-                    if (!message.isEmpty()) {
-                        dbManager.saveMessage(currentUser, selectedUser, message);
-                        messageList.getItems().add("You: " + message);
-                        messageField.clear();
+                    String messageContent = messageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
+                        if (messageID != -1) {
+                            Label textLabel = new Label(currentUser + ": " + messageContent);
+                            messageList.getItems().add(textLabel); // Display in the chat using currentUser's username
+                            messageField.clear();                               // Clear the input field
+                        } else {
+                            System.err.println("Failed to save the message.");
+                        }
                     }
                 });
 
+                // Back button action
+                backButton.setOnAction(ev -> primaryStage.setScene(usersScene)); // Switch back to user list scene
+                primaryStage.setScene(chatScene);                                // Switch to chat scene
+            }
+        });
+
+// Users List View Click Event
+        usersListView.setOnMouseClicked(event -> {
+            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
+            if (selectedUser != null) {
+                // Clear previous messages
+                messageList.getItems().clear();
+
+                // Fetch and map chat history for the selected user to displayable strings using streams
+                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
+                List<String> displayableChatHistory = chatHistory.stream()
+                        .map(message -> message.getSender() + ": " + message.getContent())  // Format as "sender: content"
+                        .collect(Collectors.toList()); // Collect the result into a list
+                messageList.getItems().clear(); // Clear any existing items
+                displayableChatHistory.forEach(chat -> {
+                    Label textLabel = new Label(chat); // Wrap each string in a Label
+                    messageList.getItems().add(textLabel); // Add the Label to the message list
+                });
+
+
+                // Send button action (single instance per user interaction)
+                sendButton.setOnAction(ev -> {
+                    String messageContent = messageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save the message
+                        if (messageID != -1) {
+                            Label textLabel = new Label(currentUser + ": " + messageContent);
+                            messageList.getItems().add(textLabel);
+                            messageField.clear(); // Clear input field
+                        } else {
+                            System.err.println("Failed to save the message.");
+                        }
+                    }
+                });
+
+                // Back button action
+                backButton.setOnAction(ev -> primaryStage.setScene(usersScene)); // Go back to users list scene
+                primaryStage.setScene(chatScene);                                // Switch to chat scene
+            }
+        });
+
+
+// Handle Enter key for navigation
+        privateChatListScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (privateChatBackButton.isFocused()) {
+                    privateChatBackButton.fire();
+                }
+            }
+        });
+
+// Back Button in Private Chat List
+        privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
+
+// Users list action
+        usersListView.setOnMouseClicked(event -> {
+            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
+            if (selectedUser != null) {
+                // Clear the message list
+                messageList.getItems().clear();
+
+
+                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
+                chatHistory.forEach(message -> {
+                    Label textLabel = new Label(message.getSender() + ": " + message.getContent());
+                    messageList.getItems().add(textLabel);
+                });
+
+                // Send button action
+                sendButton.setOnAction(ev -> {
+                    String messageContent = messageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
+                        if (messageID != -1) {
+                            Label textLabel = new Label(currentUser + ": " + messageContent);
+                            messageList.getItems().add(textLabel);
+                            messageField.clear();
+                        } else {
+                            System.err.println("Failed to save the message.");
+                        }
+                    }
+                });
+
+                // Back button action
                 backButton.setOnAction(ev -> primaryStage.setScene(usersScene));
                 primaryStage.setScene(chatScene);
             }
         });
+
+
+// Handle Enter key for navigation
+        privateChatListScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                if (privateChatBackButton.isFocused()) {
+                    privateChatBackButton.fire();
+                }
+            }
+        });
+
+// Back Button in Private Chat List
+        privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
+
+// Users list action
+        usersListView.setOnMouseClicked(event -> {
+            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
+            if (selectedUser != null) {
+                // Clear the message list
+                messageList.getItems().clear();
+
+                // Fetch and map chat history to displayable strings using streams
+                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
+                List<String> displayableChatHistory = chatHistory.stream()
+                        .map(message -> message.getSender() + " (" + message.getTimestamp() + "): " + message.getContent())
+                        .collect(Collectors.toList());
+                messageList.getItems().clear(); // Clear any existing items
+                displayableChatHistory.forEach(chat -> {
+                    Label textLabel = new Label(chat); // Wrap each string in a Label
+                    messageList.getItems().add(textLabel); // Add the Label to the message list
+                });
+
+
+                // Send button action
+                sendButton.setOnAction(ev -> {
+                    String messageContent = messageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
+                        if (messageID != -1) {
+                            Label textLabel = new Label(currentUser + ": " + messageContent);
+                            messageList.getItems().add(textLabel);
+
+                            messageField.clear();
+                        } else {
+                            System.err.println("Failed to save the message.");
+                        }
+                    }
+                });
+
+                // Back button action
+                backButton.setOnAction(ev -> primaryStage.setScene(usersScene));
+                primaryStage.setScene(chatScene);
+            }
+        });
+
 
         primaryStage.setTitle("BatChat");
         primaryStage.setScene(loginScene);
