@@ -1,4 +1,4 @@
-import java.time.LocalDateTime;
+//package com.mycompany.batchat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,6 +11,15 @@ class User {
 
     public User(int userID, String username, String password, String status) {
         this.userID = userID;
+        this.username = username;
+        this.password = password;
+        this.status = status;
+    }
+    public User(String username) {
+        this.username = username;
+    }
+
+    public User(String username, String password, String status) {
         this.username = username;
         this.password = password;
         this.status = status;
@@ -57,16 +66,28 @@ class User {
 class Message {
     private int messageID;
     private int senderID;
+    private String sender;
     private int receiverID;
+    private String receiver;
     private String content;
-    private LocalDateTime timestamp;
+    private String timestamp;
 
-    public Message(int messageID, int senderID, int receiverID, String content, LocalDateTime timestamp) {
+    public Message(int messageID, int senderID, String sender, int receiverID, String receiver, String content, String timestamp) {
         this.messageID = messageID;
         this.senderID = senderID;
+        this.sender = sender;
         this.receiverID = receiverID;
+        this.receiver = receiver;
         this.content = content;
         this.timestamp = timestamp;
+
+    }
+
+    public Message(String senderName, String content, String timestamp) {
+        this.sender = senderName;
+        this.content = content;
+        this.timestamp = timestamp;
+
     }
 
     public int getMessageID() {
@@ -101,16 +122,29 @@ class Message {
         this.content = content;
     }
 
-    public LocalDateTime getTimestamp() {
+    public String getTimestamp() {
         return timestamp;
     }
 
-    public void setTimestamp(LocalDateTime timestamp) {
+    public void setTimestamp(String timestamp) {
         this.timestamp = timestamp;
     }
 
-    public String formatMessage() {
-        return "[" + timestamp + "] " + senderID + ": " + content;
+
+    public String getSender() {
+        return sender;
+    }
+
+    public void setSender(String sender) {
+        this.sender = sender;
+    }
+
+    public String getReceiver() {
+        return receiver;
+    }
+
+    public void setReceiver(String receiver) {
+        this.receiver = receiver;
     }
 }
 
@@ -120,6 +154,10 @@ abstract class Chat {
 
     public Chat(int chatID) {
         this.chatID = chatID;
+    }
+
+    public Chat() {
+
     }
 
     public int getChatID() {
@@ -172,6 +210,19 @@ class GroupChat extends Chat {
         this.messages = new ArrayList<>();
     }
 
+    public GroupChat(int chatID, List<Message> messages) {
+        super(chatID);
+        this.messages = messages;
+    }
+
+    public GroupChat(String roomName) {
+        super();
+        this.roomName=roomName;
+    }
+
+    public <E> GroupChat(int chatRoomId, String roomName, ArrayList<E> es) {
+    }
+
     public String getRoomName() {
         return roomName;
     }
@@ -195,7 +246,9 @@ class GroupChat extends Chat {
     public List<Message> getMessages() {
         return messages;
     }
-
+    public void addMessage(Message message) {
+        this.messages.add(message);
+    }
     @Override
     public void sendMessage(Message message) {
         messages.add(message);
