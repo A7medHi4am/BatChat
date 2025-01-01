@@ -4,10 +4,16 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
+
 class DatabaseManager {
     private static final String URL = "jdbc:mysql://localhost:3306/batchat";
     private static final String USER = "root";
     private static final String PASSWORD = "";
+    private List<User> users;
+
+    public DatabaseManager() {
+        users = new ArrayList<>();
+    }
 
     private Connection connection;
 
@@ -89,14 +95,25 @@ class DatabaseManager {
     }
 
     // Fetch online users
-    public List<String> getOnlineUsers(String currentUser) {
-        List<String> onlineUsers = new ArrayList<>();
-        String query = "SELECT username FROM user WHERE status = 'online' AND username != ?";
+    public List<User> getOnlineUsers(String currentUser) {
+        List<User> onlineUsers = new ArrayList<>();
+        String query = "SELECT username, password, status FROM user WHERE status = 'online' AND username != ?";
+
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setString(1, currentUser);
             ResultSet rs = stmt.executeQuery();
+
             while (rs.next()) {
-                onlineUsers.add(rs.getString("username"));
+
+                String username = rs.getString("username");
+                String password = rs.getString("password");
+                String status = rs.getString("status");
+
+
+                User user = new User(username, password, status);
+
+
+                onlineUsers.add(user);
             }
         } catch (SQLException e) {
             System.err.println("Error fetching online users: " + e.getMessage());
@@ -104,9 +121,9 @@ class DatabaseManager {
         return onlineUsers;
     }
 
-    // Fetch chat history
-    public List<String> getChatHistory(String senderUsername, String receiverUsername) {
-        List<String> chatHistory = new ArrayList<>();
+    // DatabaseManager method for retrieving chat history
+    public List<Message> getChatHistory(String senderUsername, String receiverUsername) {
+        List<Message> chatHistory = new ArrayList<>();
         int senderId = getUserIdByUsername(senderUsername);
         int receiverId = getUserIdByUsername(receiverUsername);
 
@@ -125,15 +142,21 @@ class DatabaseManager {
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 int sender = rs.getInt("senderID");
-                String message = rs.getString("content");
-                chatHistory.add((sender == senderId ? senderUsername : receiverUsername) + ": " + message);
+                String content = rs.getString("content");
+                String timestamp = rs.getString("timestamp");
+
+                String senderName = (sender == senderId) ? senderUsername : receiverUsername;
+
+                // Use the unified Message class
+
+                chatHistory.add(new Message(senderName, content, timestamp));
             }
         } catch (SQLException e) {
             System.err.println("Error fetching chat history: " + e.getMessage());
         }
+
         return chatHistory;
     }
-
     // Save a message to the database
     public int saveMessage(String senderUsername, String receiverUsername, String message) {
         int senderId = getUserIdByUsername(senderUsername);
@@ -161,6 +184,7 @@ class DatabaseManager {
         }
         return -1;
     }
+
 
     // Create a group chat
     public boolean createGroupChat(String roomName, String createdByUsername) {
@@ -206,19 +230,25 @@ class DatabaseManager {
     }
 
     // Get all group chat names
-    public List<String> getAllGroups() {
-        List<String> groupNames = new ArrayList<>();
+    public List<GroupChat> getAllGroups() {
+        List<GroupChat> groups = new ArrayList<>();
         String query = "SELECT RoomName FROM GroupChat";
+
         try (PreparedStatement stmt = connection.prepareStatement(query);
              ResultSet rs = stmt.executeQuery()) {
+
             while (rs.next()) {
-                groupNames.add(rs.getString("RoomName"));
+                String roomName = rs.getString("RoomName");
+                groups.add(new GroupChat(roomName)); // Add the group object instead of just the name
             }
+
         } catch (SQLException e) {
             System.err.println("Error fetching group chat names: " + e.getMessage());
         }
-        return groupNames;
+
+        return groups;
     }
+
 
     // Save a message in a group chat
     public void saveGroupMessage(String roomName, String senderUsername, String message) {
@@ -240,8 +270,8 @@ class DatabaseManager {
         }
     }
 
-    public List<String> getGroupChatMessages(String roomName) {
-        List<String> messages = new ArrayList<>();
+    public List<Message> getGroupChatMessages(String roomName) {
+        List<Message> messages = new ArrayList<>();
         int chatRoomId = getChatRoomIdByRoomName(roomName);
 
         if (chatRoomId == -1) {
@@ -259,15 +289,19 @@ class DatabaseManager {
             stmt.setInt(1, chatRoomId);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                String user = rs.getString("username");
-                String message = rs.getString("content");
-                messages.add( user + ": " + message);
+                String senderName = rs.getString("username");
+                String content = rs.getString("content");
+                String timestamp = rs.getString("timestamp");
+
+                Message message = new Message(senderName, content, timestamp);
+                messages.add(message);
             }
         } catch (SQLException e) {
             System.err.println("Error fetching group chat messages: " + e.getMessage());
         }
         return messages;
     }
+
 
 
     // Helper method to get ChatRoomID by RoomName
@@ -298,6 +332,34 @@ class DatabaseManager {
         }
     }
 
+    public int saveGroupMessageWithAttachment(String roomName, String senderUsername, String message, String filePath) {
+        int senderId = getUserIdByUsername(senderUsername);  // Get sender's ID
+        int chatRoomId = getChatRoomIdByRoomName(roomName);   // Get chat room ID
+
+        if (senderId == -1 || chatRoomId == -1) {
+            System.err.println("Error: Invalid sender or group chat.");
+            return -1;  // Return -1 to indicate failure
+        }
+
+        // Save the message into the Message table
+        String query = "INSERT INTO Message (senderID, receiverID, content) VALUES (?, NULL, ?)";
+        try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, senderId);
+            stmt.setString(2, message);  // Message content
+            stmt.executeUpdate();
+
+            // Retrieve the generated messageID
+            ResultSet generatedKeys = stmt.getGeneratedKeys();
+            if (generatedKeys.next()) {
+                return generatedKeys.getInt(1);  // Return the generated message ID
+            }
+        } catch (SQLException e) {
+            System.err.println("Error saving group chat message with attachment: " + e.getMessage());
+        }
+        return -1;  // Return -1 in case of failure
+    }
+
+
 
     public List<Attachment> getAttachmentsForMessage(int messageID) {
         List<Attachment> attachments = new ArrayList<>();
@@ -320,6 +382,7 @@ class DatabaseManager {
         }
         return attachments;
     }
+
 
 }
 
