@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class App extends Application {
@@ -245,8 +246,10 @@ public class App extends Application {
         groupNameField.setPromptText("Enter group name...");
         Button createGroupButton = new Button("Create Group");
         Button enterGroupButton = new Button("Enter Group");
+        Button addParticipantButton = new Button("Add to Group");
+        usersLayout.getChildren().add(addParticipantButton);
         Button backToMainButton = new Button("Back");
-        groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, enterGroupButton, backToMainButton);
+        groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, enterGroupButton,addParticipantButton, backToMainButton);
         Scene groupListScene = new Scene(groupListLayout, 400, 600);
         mainScene.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
@@ -303,14 +306,17 @@ public class App extends Application {
 
 
 
-        // --- Group chat button action ---
+// --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
-            List<GroupChat> groupChats = dbManager.getAllGroups(); // Use getAllGroups method
+            List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
+
+            // Use Collectors to map GroupChat objects to their RoomNames (Strings)
             List<String> groupNames = groupChats.stream()
-                    .map(GroupChat::getRoomName)
-                    .collect(Collectors.toList());
+                    .map(GroupChat::getRoomName) // Get the RoomName of each GroupChat
+                    .collect(Collectors.toList()); // Collect them into a list of strings
 
             groupListView.getItems().setAll(groupNames);
+
             primaryStage.setScene(groupListScene);
         });
 
@@ -327,24 +333,17 @@ public class App extends Application {
 
         // --- Enter group button action ---
         enterGroupButton.setOnAction(e -> {
-            String selectedGroup = groupListView.getSelectionModel().getSelectedItem(); // Get selected group
+            String selectedGroup = groupListView.getSelectionModel().getSelectedItem();
             if (selectedGroup != null) {
-                groupMessageList.getItems().clear(); // Clear the group message list
-                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Fetch saved group messages
-
-                // Fetch and add participants to the group
-                List<User> participants = dbManager.getGroupParticipants(selectedGroup);
-                if (participants.isEmpty()) {
-                    dbManager.addParticipantToGroupChat(selectedGroup, currentUser);
-                    participants = dbManager.getGroupParticipants(selectedGroup);
-                }
+                groupMessageList.getItems().clear();
+                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Fetch messages only for the selected group
 
                 // Populate the message list with formatted messages
                 for (Message message : groupMessages) {
                     String messageContent = message.getContent();
                     File file = new File(messageContent);
 
-                    if (file.exists()) { // Check if it's a valid file path
+                    if (file.exists()) {
                         Label senderLabel = new Label(message.getSender() + ": ");
                         groupMessageList.getItems().add(senderLabel);
 
@@ -361,7 +360,7 @@ public class App extends Application {
                 groupSendButton.setOnAction(ev -> {
                     String messageContent = groupMessageField.getText().trim();
                     if (!messageContent.isEmpty()) {
-                        dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent); // Save text message
+                        dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent);
                         groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
                         groupMessageField.clear();
                     }
@@ -409,7 +408,28 @@ public class App extends Application {
                         }
                     }
                 });
+                addParticipantButton.setOnAction(ev -> {
+                    String selectedUser = usersListView.getSelectionModel().getSelectedItem();
+                    if (selectedUser != null) {
+                        // Show a dialog or prompt to select a group
+                        TextInputDialog dialog = new TextInputDialog();
+                        dialog.setTitle("Add to Group");
+                        dialog.setHeaderText("Add " + selectedUser + " to a Group");
+                        dialog.setContentText("Enter group name:");
 
+                        // Traditional way to get the response value.
+                        Optional<String> result = dialog.showAndWait();
+                        if (result.isPresent()) {
+                            String groupName = result.get();
+                            boolean success = dbManager.addParticipantToGroupChat(groupName, selectedUser);
+                            if (success) {
+                                new Alert(Alert.AlertType.INFORMATION, "User added to group successfully!").showAndWait();
+                            } else {
+                                new Alert(Alert.AlertType.ERROR, "Failed to add user to group.").showAndWait();
+                            }
+                        }
+                    }
+                });
                 groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene)); // Back to group list
                 primaryStage.setScene(groupChatScene);                                    // Transition to group chat scene
             }
