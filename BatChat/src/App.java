@@ -259,7 +259,7 @@ public class App extends Application {
                 }
             }
         });
-// --- GROUP CHATROOM SCREEN --- 
+// --- GROUP CHATROOM SCREEN ---
         BorderPane groupChatLayout = new BorderPane();
         ListView<Node> groupMessageList = new ListView<>(); // Use ListView<Node> for text and images
         TextField groupMessageField = new TextField();
@@ -305,15 +305,12 @@ public class App extends Application {
 
         // --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
-            List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
-
-            // Use Collectors to map GroupChat objects to their RoomNames (Strings)
+            List<GroupChat> groupChats = dbManager.getAllGroups(); // Use getAllGroups method
             List<String> groupNames = groupChats.stream()
-                    .map(GroupChat::getRoomName) // Get the RoomName of each GroupChat
-                    .collect(Collectors.toList()); // Collect them into a list of strings
+                    .map(GroupChat::getRoomName)
+                    .collect(Collectors.toList());
 
             groupListView.getItems().setAll(groupNames);
-
             primaryStage.setScene(groupListScene);
         });
 
@@ -333,7 +330,14 @@ public class App extends Application {
             String selectedGroup = groupListView.getSelectionModel().getSelectedItem(); // Get selected group
             if (selectedGroup != null) {
                 groupMessageList.getItems().clear(); // Clear the group message list
-                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Updated method for fetching group chat messages
+                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Fetch saved group messages
+
+                // Fetch and add participants to the group
+                List<User> participants = dbManager.getGroupParticipants(selectedGroup);
+                if (participants.isEmpty()) {
+                    dbManager.addParticipantToGroupChat(selectedGroup, currentUser);
+                    participants = dbManager.getGroupParticipants(selectedGroup);
+                }
 
                 // Populate the message list with formatted messages
                 for (Message message : groupMessages) {
@@ -410,7 +414,6 @@ public class App extends Application {
                 primaryStage.setScene(groupChatScene);                                    // Transition to group chat scene
             }
         });
-
         groupChatScene.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
                 if (groupSendButton.isFocused()) {
