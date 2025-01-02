@@ -11,6 +11,7 @@ class DatabaseManager {
     private static final String PASSWORD = "";
     private List<User> users;
 
+
     public DatabaseManager() {
         users = new ArrayList<>();
     }
@@ -194,27 +195,46 @@ class DatabaseManager {
         }
 
         String query = "INSERT INTO GroupChat (RoomName, CreatedBy) VALUES (?, ?)";
-        try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
-            stmt.setString(1, roomName);
-            stmt.setInt(2, createdBy);
-            stmt.executeUpdate();
+        try {
+            connection.setAutoCommit(false); // Disable autocommit
 
-            // Ensure the group chat is saved by checking the generated keys
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    int chatRoomID = generatedKeys.getInt(1);
-                    System.out.println("Group chat created with ID: " + chatRoomID);
-                    return true;
-                } else {
-                    throw new SQLException("Creating group chat failed, no ID obtained.");
+            try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
+                stmt.setString(1, roomName);
+                stmt.setInt(2, createdBy);
+                stmt.executeUpdate();
+
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        int chatRoomID = generatedKeys.getInt(1);
+                        System.out.println("Group chat created with ID: " + chatRoomID);
+
+                        // Add the creator as a participant
+                        addParticipantToGroupChat(roomName, createdByUsername);
+
+                        connection.commit(); // Commit the transaction
+                        return true;
+                    } else {
+                        connection.rollback(); // Rollback the transaction
+                        throw new SQLException("Creating group chat failed, no ID obtained.");
+                    }
                 }
             }
         } catch (SQLException e) {
+            try {
+                connection.rollback(); // Rollback the transaction in case of error
+            } catch (SQLException rollbackException) {
+                System.err.println("Error rolling back transaction: " + rollbackException.getMessage());
+            }
             System.err.println("Error creating group chat: " + e.getMessage());
             return false;
+        } finally {
+            try {
+                connection.setAutoCommit(true); // Enable autocommit
+            } catch (SQLException e) {
+                System.err.println("Error setting autocommit: " + e.getMessage());
+            }
         }
     }
-
     // Add a participant to a group chat
     public boolean addParticipantToGroupChat(String roomName, String participantUsername) {
         int userId = getUserIdByUsername(participantUsername);
@@ -236,7 +256,32 @@ class DatabaseManager {
             return false;
         }
     }
+    public List<User> getGroupParticipants(String roomName) {
+        List<User> participants = new ArrayList<>();
+        int chatRoomId = getChatRoomIdByRoomName(roomName);
 
+        if (chatRoomId == -1) {
+            System.err.println("Error: Invalid group name.");
+            return participants;
+        }
+
+        String query = "SELECT u.username, u.password, u.status FROM User u " +
+                "JOIN GroupChatParticipant gcp ON u.userID = gcp.UserID " +
+                "WHERE gcp.ChatRoomID = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setInt(1, chatRoomId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String username = rs.getString("username");
+                String password = rs.getString("password");
+                String status = rs.getString("status");
+                participants.add(new User(username, password, status));
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching group participants: " + e.getMessage());
+        }
+        return participants;
+    }
     // Get all group chats the user is a participant in
     public List<GroupChat> getUserGroups(String username) {
         List<GroupChat> groups = new ArrayList<>();
@@ -280,6 +325,7 @@ class DatabaseManager {
 
         return groups;
     }
+
     // Save a message in a group chat
     public void saveGroupMessage(String roomName, String senderUsername, String message) {
         int senderId = getUserIdByUsername(senderUsername);
@@ -295,6 +341,7 @@ class DatabaseManager {
             stmt.setInt(1, senderId);
             stmt.setString(2, message);
             stmt.executeUpdate();
+            System.out.println("Message saved successfully.");
         } catch (SQLException e) {
             System.err.println("Error saving group chat message: " + e.getMessage());
         }
@@ -331,7 +378,9 @@ class DatabaseManager {
         }
         return messages;
     }
-
+    public List<Message> getSavedMessagesForGroup(String roomName) {
+        return getGroupChatMessages(roomName);
+    }
 
 
     // Helper method to get ChatRoomID by RoomName
@@ -447,4 +496,3 @@ class DatabaseManager {
 
 
 }
-
