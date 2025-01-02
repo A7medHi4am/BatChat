@@ -347,40 +347,32 @@ class DatabaseManager {
         }
     }
 
-    public List<Message> getGroupChatMessages(String roomName) {
-        List<Message> messages = new ArrayList<>();
-        int chatRoomId = getChatRoomIdByRoomName(roomName);
-
-        if (chatRoomId == -1) {
-            System.err.println("Error: Invalid group name.");
-            return messages;
-        }
-
+    public List<Message> getGroupChatMessages(int chatRoomId) {
+        List<Message> groupMessages = new ArrayList<>();
         String query = "SELECT u.username, m.content, m.timestamp " +
                 "FROM Message m " +
                 "JOIN GroupChatParticipant gcp ON gcp.UserID = m.senderID " +
                 "JOIN User u ON u.userID = m.senderID " +
                 "WHERE gcp.ChatRoomID = ? AND m.receiverID IS NULL " +
                 "ORDER BY m.timestamp";
+
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setInt(1, chatRoomId);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                String senderName = rs.getString("username");
+                String username = rs.getString("username");
                 String content = rs.getString("content");
                 String timestamp = rs.getString("timestamp");
-
-                Message message = new Message(senderName, content, timestamp);
-                messages.add(message);
+                groupMessages.add(new Message(username, content, timestamp));
             }
         } catch (SQLException e) {
             System.err.println("Error fetching group chat messages: " + e.getMessage());
         }
-        return messages;
+        return groupMessages;
     }
 
     // Helper method to get ChatRoomID by RoomName
-    private int getChatRoomIdByRoomName(String roomName) {
+    public int getChatRoomIdByRoomName(String roomName) {
         String query = "SELECT ChatRoomID FROM GroupChat WHERE RoomName = ?";
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setString(1, roomName);
