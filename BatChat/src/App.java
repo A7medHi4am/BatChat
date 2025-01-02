@@ -331,107 +331,117 @@ public class App extends Application {
 
 
 
-        // --- Enter group button action ---
+// --- Enter group button action ---
         enterGroupButton.setOnAction(e -> {
             String selectedGroup = groupListView.getSelectionModel().getSelectedItem();
             if (selectedGroup != null) {
-                groupMessageList.getItems().clear();
-                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Fetch messages only for the selected group
+                int chatRoomId = dbManager.getChatRoomIdByRoomName(selectedGroup); // Get the chatRoomId for the selected group
+                if (chatRoomId != -1) {
+                    groupMessageList.getItems().clear();
+                    List<Message> groupMessages = dbManager.getGroupChatMessages(chatRoomId); // Fetch messages only for the selected group
+                    // Populate the message list with formatted messages
+                    for (Message message : groupMessages) {
+                        String messageContent = message.getContent();
+                        File file = new File(messageContent);
 
-                // Populate the message list with formatted messages
-                for (Message message : groupMessages) {
-                    String messageContent = message.getContent();
-                    File file = new File(messageContent);
+                        if (file.exists()) {
+                            Label senderLabel = new Label(message.getSender() + ": ");
+                            groupMessageList.getItems().add(senderLabel);
 
-                    if (file.exists()) {
-                        Label senderLabel = new Label(message.getSender() + ": ");
-                        groupMessageList.getItems().add(senderLabel);
-
-                        Image image = new Image("file:" + file.getPath());
-                        ImageView imageView = new ImageView(image);
-                        imageView.setFitHeight(100);
-                        imageView.setPreserveRatio(true);
-                        groupMessageList.getItems().add(imageView);
-                    } else {
-                        groupMessageList.getItems().add(new Label(message.getSender() + ": " + messageContent));
+                            Image image = new Image("file:" + file.getPath());
+                            ImageView imageView = new ImageView(image);
+                            imageView.setFitHeight(100);
+                            imageView.setPreserveRatio(true);
+                            groupMessageList.getItems().add(imageView);
+                        } else {
+                            groupMessageList.getItems().add(new Label(message.getSender() + ": " + messageContent));
+                        }
                     }
+
+                    groupSendButton.setOnAction(ev -> {
+                        String messageContent = groupMessageField.getText().trim();
+                        if (!messageContent.isEmpty()) {
+                            dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent);
+                            groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
+                            groupMessageField.clear();
+                        }
+                    });
+
+                    groupAttachButton.setOnAction(ev -> {
+                        FileChooser groupFileChooser = new FileChooser();
+                        groupFileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+                        File file = groupFileChooser.showOpenDialog(primaryStage);
+                        if (file != null) {
+                            try {
+                                // Save file to attachment directory
+                                File targetDir = new File("src/main/resources/attachment");
+                                if (!targetDir.exists()) {
+                                    targetDir.mkdirs();
+                                }
+
+                                File targetFile = new File(targetDir, file.getName());
+                                Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                                // Save the file path as the message content
+                                String filePath = targetFile.getPath();
+                                int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
+
+                                if (messageID != -1) {
+                                    // Save attachment metadata
+                                    String fileType = Files.probeContentType(file.toPath());
+                                    int fileSize = (int) file.length() / 1024; // File size in KB
+                                    dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
+
+                                    // Display the attachment in the chat
+                                    Label senderLabel = new Label(currentUser + ": ");
+                                    groupMessageList.getItems().add(senderLabel);
+
+                                    Image image = new Image("file:" + filePath);
+                                    ImageView imageView = new ImageView(image);
+                                    imageView.setFitHeight(100);
+                                    imageView.setPreserveRatio(true);
+                                    groupMessageList.getItems().add(imageView);
+                                } else {
+                                    System.err.println("Failed to save group message. Attachment not saved.");
+                                }
+                            } catch (IOException ex) {
+                                System.err.println("Error uploading file: " + ex.getMessage());
+                            }
+                        }
+                    });
+
+                    addParticipantButton.setOnAction(ev -> {
+                        String selectedUser = usersListView.getSelectionModel().getSelectedItem();
+                        if (selectedUser != null) {
+                            // Show a dialog or prompt to select a group
+                            TextInputDialog dialog = new TextInputDialog();
+                            dialog.setTitle("Add to Group");
+                            dialog.setHeaderText("Add " + selectedUser + " to Group: " + selectedGroup);
+                            dialog.setContentText("Confirm group name:");
+
+                            // Traditional way to get the response value.
+                            Optional<String> result = dialog.showAndWait();
+                            if (result.isPresent()) {
+                                String groupName = result.get();
+                                if (groupName.equals(selectedGroup)) {
+                                    boolean success = dbManager.addParticipantToGroupChat(groupName, selectedUser);
+                                    if (success) {
+                                        new Alert(Alert.AlertType.INFORMATION, "User added to group successfully!").showAndWait();
+                                    } else {
+                                        new Alert(Alert.AlertType.ERROR, "Failed to add user to group.").showAndWait();
+                                    }
+                                } else {
+                                    new Alert(Alert.AlertType.ERROR, "Group name does not match selected group.").showAndWait();
+                                }
+                            }
+                        }
+                    });
+
+                    groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene)); // Back to group list
+                    primaryStage.setScene(groupChatScene);                                    // Transition to group chat scene
+                } else {
+                    new Alert(Alert.AlertType.ERROR, "Invalid group selected.").showAndWait();
                 }
-
-                groupSendButton.setOnAction(ev -> {
-                    String messageContent = groupMessageField.getText().trim();
-                    if (!messageContent.isEmpty()) {
-                        dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent);
-                        groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
-                        groupMessageField.clear();
-                    }
-                });
-
-                groupAttachButton.setOnAction(ev -> {
-                    FileChooser groupFileChooser = new FileChooser();
-                    groupFileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
-                    File file = groupFileChooser.showOpenDialog(primaryStage);
-                    if (file != null) {
-                        try {
-                            // Save file to attachment directory
-                            File targetDir = new File("src/main/resources/attachment");
-                            if (!targetDir.exists()) {
-                                targetDir.mkdirs();
-                            }
-
-                            File targetFile = new File(targetDir, file.getName());
-                            Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                            // Save the file path as the message content
-                            String filePath = targetFile.getPath();
-                            int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
-
-                            if (messageID != -1) {
-                                // Save attachment metadata
-                                String fileType = Files.probeContentType(file.toPath());
-                                int fileSize = (int) file.length() / 1024; // File size in KB
-                                dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
-
-                                // Display the attachment in the chat
-                                Label senderLabel = new Label(currentUser + ": ");
-                                groupMessageList.getItems().add(senderLabel);
-
-                                Image image = new Image("file:" + filePath);
-                                ImageView imageView = new ImageView(image);
-                                imageView.setFitHeight(100);
-                                imageView.setPreserveRatio(true);
-                                groupMessageList.getItems().add(imageView);
-                            } else {
-                                System.err.println("Failed to save group message. Attachment not saved.");
-                            }
-                        } catch (IOException ex) {
-                            System.err.println("Error uploading file: " + ex.getMessage());
-                        }
-                    }
-                });
-                addParticipantButton.setOnAction(ev -> {
-                    String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-                    if (selectedUser != null) {
-                        // Show a dialog or prompt to select a group
-                        TextInputDialog dialog = new TextInputDialog();
-                        dialog.setTitle("Add to Group");
-                        dialog.setHeaderText("Add " + selectedUser + " to a Group");
-                        dialog.setContentText("Enter group name:");
-
-                        // Traditional way to get the response value.
-                        Optional<String> result = dialog.showAndWait();
-                        if (result.isPresent()) {
-                            String groupName = result.get();
-                            boolean success = dbManager.addParticipantToGroupChat(groupName, selectedUser);
-                            if (success) {
-                                new Alert(Alert.AlertType.INFORMATION, "User added to group successfully!").showAndWait();
-                            } else {
-                                new Alert(Alert.AlertType.ERROR, "Failed to add user to group.").showAndWait();
-                            }
-                        }
-                    }
-                });
-                groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene)); // Back to group list
-                primaryStage.setScene(groupChatScene);                                    // Transition to group chat scene
             }
         });
         groupChatScene.setOnKeyPressed(event -> {
