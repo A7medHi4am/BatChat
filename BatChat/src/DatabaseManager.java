@@ -186,7 +186,7 @@ class DatabaseManager {
 
 
     // Create a group chat
-    public boolean createGroupChat(String roomName, String createdByUsername) {
+    public boolean createGroupChat(String roomName, String createdByUsername, List<String> participants) {
         int createdBy = getUserIdByUsername(createdByUsername);
 
         if (createdBy == -1) {
