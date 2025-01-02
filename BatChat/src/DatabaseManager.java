@@ -256,6 +256,29 @@ class DatabaseManager {
             return false;
         }
     }
+    // Get all group chats the user is a participant in
+    public List<GroupChat> getUserGroups(String username) {
+        List<GroupChat> groups = new ArrayList<>();
+        String query = "SELECT gc.RoomName FROM GroupChat gc "
+                + " INNER JOIN GroupChatParticipant gcp"
+                + " ON gc.ChatRoomID = gcp.ChatRoomID"
+                + " INNER JOIN User u ON gcp.UserID = u.userID"
+                + " WHERE u.username = ?";
+
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String roomName = rs.getString("RoomName");
+                    groups.add(new GroupChat(roomName));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching user group chats: " + e.getMessage());
+        }
+
+        return groups;
+    }
     public List<User> getGroupParticipants(String roomName) {
         List<User> participants = new ArrayList<>();
         int chatRoomId = getChatRoomIdByRoomName(roomName);
@@ -282,32 +305,9 @@ class DatabaseManager {
         }
         return participants;
     }
-    // Get all group chats the user is a participant in
-    public List<GroupChat> getUserGroups(String username) {
-        List<GroupChat> groups = new ArrayList<>();
-        String query = "SELECT gc.RoomName FROM GroupChat gc "
-                + " INNER JOIN GroupChatParticipant gcp"
-                + " ON gc.ChatRoomID = gcp.ChatRoomID"
-                + " INNER JOIN User u ON gcp.UserID = u.userID"
-                + " WHERE u.username = ?";
-
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setString(1, username); // Set the username for the query
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    String roomName = rs.getString("RoomName");
-                    groups.add(new GroupChat(roomName)); // Add the group object
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Error fetching user group chats: " + e.getMessage());
-        }
-
-        return groups;
-    }
 
     // Get all group chat names
-    public List<GroupChat> getAllGroups() {
+    /* public List<GroupChat> getAllGroups() {
         List<GroupChat> groups = new ArrayList<>();
         String query = "SELECT RoomName FROM GroupChat";
 
@@ -324,7 +324,7 @@ class DatabaseManager {
         }
 
         return groups;
-    }
+    }*/
 
     // Save a message in a group chat
     public void saveGroupMessage(String roomName, String senderUsername, String message) {
@@ -378,10 +378,6 @@ class DatabaseManager {
         }
         return messages;
     }
-    public List<Message> getSavedMessagesForGroup(String roomName) {
-        return getGroupChatMessages(roomName);
-    }
-
 
     // Helper method to get ChatRoomID by RoomName
     private int getChatRoomIdByRoomName(String roomName) {
