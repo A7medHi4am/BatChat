@@ -15,6 +15,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.Pair;
 
 import java.io.File;
 import java.io.IOException;
@@ -235,21 +236,81 @@ public class App extends Application {
         Scene chatScene = new Scene(chatLayout, 400, 600);
 
 // --- GROUP CHAT LIST SCREEN ---
+        ListView<String> groupListView = new ListView<>();
         VBox groupListLayout = new VBox(10);
         groupListLayout.setPadding(new Insets(20));
         groupListLayout.setAlignment(Pos.CENTER);
 
         Label groupListLabel = new Label("Available Groups:");
         groupListLabel.setStyle("-fx-text-fill: #F8F8F8;");
-        ListView<String> groupListView = new ListView<>();
+
+// Add the search textbox for groups
+        TextField searchGroupField = new TextField();
+        searchGroupField.setPromptText("Search groups...");
+
+// Add listener for search functionality
+        searchGroupField.textProperty().addListener((observable, oldValue, newValue) -> {
+            groupListView.getItems().clear();
+            List<String> filteredGroups = dbManager.getUserGroups(currentUser).stream()
+                    .map(GroupChat::getRoomName)
+                    .filter(name -> name.toLowerCase().contains(newValue.toLowerCase()))
+                    .collect(Collectors.toList());
+            groupListView.getItems().addAll(filteredGroups);
+        });
+
         TextField groupNameField = new TextField();
         groupNameField.setPromptText("Enter group name...");
+
+// Add a button for creating a group
         Button createGroupButton = new Button("Create Group");
+        createGroupButton.setOnAction(e -> {
+            Dialog<Pair<String, List<String>>> dialog = new Dialog<>();
+            dialog.setTitle("Create Group");
+
+            // Set the button types
+            ButtonType createButtonType = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(createButtonType, ButtonType.CANCEL);
+
+            // Create the group name and participants fields
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20, 150, 10, 10));
+
+            TextField groupNameFieldPopup = new TextField();
+            groupNameFieldPopup.setPromptText("Group Name");
+            ListView<String> participantsListView = new ListView<>();
+            participantsListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+            participantsListView.getItems().addAll(usersListView.getItems());
+
+            grid.add(new Label("Group Name:"), 0, 0);
+            grid.add(groupNameFieldPopup, 1, 0);
+            grid.add(new Label("Participants:"), 0, 1);
+            grid.add(participantsListView, 1, 1);
+
+            dialog.getDialogPane().setContent(grid);
+
+            // Convert the result to a group name and participants list when the create button is clicked
+            dialog.setResultConverter(dialogButton -> {
+                if (dialogButton == createButtonType) {
+                    return new Pair<>(groupNameFieldPopup.getText(), participantsListView.getSelectionModel().getSelectedItems());
+                }
+                return null;
+            });
+
+            Optional<Pair<String, List<String>>> result = dialog.showAndWait();
+            result.ifPresent(groupDetails -> {
+                String groupName = groupDetails.getKey();
+                List<String> participants = groupDetails.getValue();
+                if (!groupName.isEmpty() && !participants.isEmpty() && dbManager.createGroupChat(groupName, currentUser, participants)) {
+                    groupListView.getItems().add(groupName);
+                }
+            });
+        });
+
         Button enterGroupButton = new Button("Enter Group");
-        Button addParticipantButton = new Button("Add to Group");
-        usersLayout.getChildren().add(addParticipantButton);
         Button backToMainButton = new Button("Back");
-        groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, enterGroupButton,addParticipantButton, backToMainButton);
+        groupListLayout.getChildren().addAll(searchGroupField, groupListLabel, groupListView, createGroupButton, enterGroupButton, backToMainButton);
         Scene groupListScene = new Scene(groupListLayout, 400, 600);
         mainScene.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
@@ -306,7 +367,7 @@ public class App extends Application {
 
 
 
-// --- Group chat button action ---
+// Group chat button action
         groupChatButton.setOnAction(e -> {
             List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
 
@@ -320,26 +381,59 @@ public class App extends Application {
             primaryStage.setScene(groupListScene);
         });
 
-        // --- Create group button action ---
+// --- Create group button action ---
         createGroupButton.setOnAction(e -> {
-            String groupName = groupNameField.getText().trim();
-            if (!groupName.isEmpty() && dbManager.createGroupChat(groupName, currentUser)) { // Updated method for creating group chats
-                groupListView.getItems().add(groupName);
-                groupNameField.clear();
-            }
+            Dialog<Pair<String, List<String>>> dialog = new Dialog<>();
+            dialog.setTitle("Create Group");
+
+            ButtonType createButtonType = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(createButtonType, ButtonType.CANCEL);
+
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20, 150, 10, 10));
+
+            TextField groupNameFieldPopup = new TextField();
+            groupNameFieldPopup.setPromptText("Group Name");
+            ListView<String> participantsListView = new ListView<>();
+            participantsListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+            participantsListView.getItems().addAll(dbManager.getOnlineUsers(currentUser).stream()
+                    .map(User::getUsername)
+                    .collect(Collectors.toList()));
+
+            grid.add(new Label("Group Name:"), 0, 0);
+            grid.add(groupNameFieldPopup, 1, 0);
+            grid.add(new Label("Participants:"), 0, 1);
+            grid.add(participantsListView, 1, 1);
+
+            dialog.getDialogPane().setContent(grid);
+
+            dialog.setResultConverter(dialogButton -> {
+                if (dialogButton == createButtonType) {
+                    return new Pair<>(groupNameFieldPopup.getText(), participantsListView.getSelectionModel().getSelectedItems());
+                }
+                return null;
+            });
+
+            Optional<Pair<String, List<String>>> result = dialog.showAndWait();
+            result.ifPresent(groupDetails -> {
+                String groupName = groupDetails.getKey();
+                List<String> participants = groupDetails.getValue();
+                if (!groupName.isEmpty() && !participants.isEmpty() && dbManager.createGroupChat(groupName, currentUser, participants)) {
+                    groupListView.getItems().add(groupName);
+                }
+            });
         });
-
-
 
 // --- Enter group button action ---
         enterGroupButton.setOnAction(e -> {
             String selectedGroup = groupListView.getSelectionModel().getSelectedItem();
             if (selectedGroup != null) {
-                int chatRoomId = dbManager.getChatRoomIdByRoomName(selectedGroup); // Get the chatRoomId for the selected group
+                int chatRoomId = dbManager.getChatRoomIdByRoomName(selectedGroup);
                 if (chatRoomId != -1) {
                     groupMessageList.getItems().clear();
-                    List<Message> groupMessages = dbManager.getGroupChatMessages(chatRoomId); // Fetch messages only for the selected group
-                    // Populate the message list with formatted messages
+                    List<Message> groupMessages = dbManager.getGroupChatMessages(chatRoomId);
                     for (Message message : groupMessages) {
                         String messageContent = message.getContent();
                         File file = new File(messageContent);
@@ -373,7 +467,6 @@ public class App extends Application {
                         File file = groupFileChooser.showOpenDialog(primaryStage);
                         if (file != null) {
                             try {
-                                // Save file to attachment directory
                                 File targetDir = new File("src/main/resources/attachment");
                                 if (!targetDir.exists()) {
                                     targetDir.mkdirs();
@@ -382,17 +475,14 @@ public class App extends Application {
                                 File targetFile = new File(targetDir, file.getName());
                                 Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-                                // Save the file path as the message content
                                 String filePath = targetFile.getPath();
                                 int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
 
                                 if (messageID != -1) {
-                                    // Save attachment metadata
                                     String fileType = Files.probeContentType(file.toPath());
-                                    int fileSize = (int) file.length() / 1024; // File size in KB
+                                    int fileSize = (int) file.length() / 1024;
                                     dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
 
-                                    // Display the attachment in the chat
                                     Label senderLabel = new Label(currentUser + ": ");
                                     groupMessageList.getItems().add(senderLabel);
 
@@ -410,16 +500,21 @@ public class App extends Application {
                         }
                     });
 
-                    addParticipantButton.setOnAction(ev -> {
+                    // Fetch and display participants
+                    List<User> participants = dbManager.getGroupParticipants(selectedGroup);
+                    participants.forEach(participant -> {
+                        Label participantLabel = new Label(participant.getUsername());
+                        groupMessageList.getItems().add(participantLabel);
+                    });
+
+                    /*addParticipantButton.setOnAction(ev -> {
                         String selectedUser = usersListView.getSelectionModel().getSelectedItem();
                         if (selectedUser != null) {
-                            // Show a dialog or prompt to select a group
                             TextInputDialog dialog = new TextInputDialog();
                             dialog.setTitle("Add to Group");
                             dialog.setHeaderText("Add " + selectedUser + " to Group: " + selectedGroup);
                             dialog.setContentText("Confirm group name:");
 
-                            // Traditional way to get the response value.
                             Optional<String> result = dialog.showAndWait();
                             if (result.isPresent()) {
                                 String groupName = result.get();
@@ -435,10 +530,10 @@ public class App extends Application {
                                 }
                             }
                         }
-                    });
+                    });*/
 
-                    groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene)); // Back to group list
-                    primaryStage.setScene(groupChatScene);                                    // Transition to group chat scene
+                    groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene));
+                    primaryStage.setScene(groupChatScene);
                 } else {
                     new Alert(Alert.AlertType.ERROR, "Invalid group selected.").showAndWait();
                 }
