@@ -1,5 +1,3 @@
-//package com.mycompany.batchat;
-
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +8,6 @@ class DatabaseManager {
     private static final String USER = "root";
     private static final String PASSWORD = "";
     private List<User> users;
-
 
     public DatabaseManager() {
         users = new ArrayList<>();
@@ -69,56 +66,75 @@ class DatabaseManager {
         return -1; // Return -1 if user not found
     }
 
-    // Register a new user
-    public boolean registerUser(String fullName, String username, String password) {
-        String checkQuery = "SELECT COUNT(*) FROM user WHERE username = ?";
-        String insertQuery = "INSERT INTO user (full_name, username, password, status) VALUES (?, ?, ?, 'offline')";
-        try (PreparedStatement checkStmt = connection.prepareStatement(checkQuery);
-             PreparedStatement insertStmt = connection.prepareStatement(insertQuery)) {
-
-            // Check if the username already exists
-            checkStmt.setString(1, username);
-            ResultSet resultSet = checkStmt.executeQuery();
-            if (resultSet.next() && resultSet.getInt(1) > 0) {
-                return false; // Username exists
+    // Check if a username already exists in the database
+    public boolean usernameExists(String username) {
+        String query = "SELECT COUNT(*) FROM user WHERE username = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
             }
-
-            // Insert the new user
-            insertStmt.setString(1, fullName);
-            insertStmt.setString(2, username);
-            insertStmt.setString(3, password);
-            insertStmt.executeUpdate();
-            return true; // Account created successfully
         } catch (SQLException e) {
-            System.err.println("Error registering user: " + e.getMessage());
-            return false;
+            e.printStackTrace();
         }
+        return false;
     }
 
-    // Fetch online users
-    public List<User> getOnlineUsers(String currentUser) {
-        List<User> onlineUsers = new ArrayList<>();
-        String query = "SELECT username, password, status FROM user WHERE status = 'online' AND username != ?";
+    // Insert a new user into the database
+    public boolean createUser(User user) {
+        String query = "INSERT INTO user (username, password, full_name) VALUES (?, ?, ?)";
 
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setString(1, currentUser);
+            stmt.setString(1, user.getUsername());
+            stmt.setString(2, user.getPassword());
+            stmt.setString(3, user.getFullName());
+
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;  // Returns true if user was successfully created
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // Fetch users with whom the current user has a private chat
+    public List<User> getChatContacts(String currentUser) {
+        List<User> chatContacts = new ArrayList<>();
+        int currentUserId = getUserIdByUsername(currentUser);
+
+        if (currentUserId == -1) {
+            System.err.println("Error: Invalid current user.");
+            return chatContacts;
+        }
+
+        String query = "SELECT DISTINCT u.userID, u.username, u.password, u.status " +
+                "FROM user u " +
+                "INNER JOIN PrivateChat pc ON (pc.user1ID = u.userID OR pc.user2ID = u.userID) " +
+                "WHERE (pc.user1ID = ? OR pc.user2ID = ?) AND u.userID != ?";
+
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setInt(1, currentUserId);
+            stmt.setInt(2, currentUserId);
+            stmt.setInt(3, currentUserId);
+
             ResultSet rs = stmt.executeQuery();
-
             while (rs.next()) {
-
                 String username = rs.getString("username");
                 String password = rs.getString("password");
                 String status = rs.getString("status");
 
-
                 User user = new User(username, password, status);
-                onlineUsers.add(user);
+                chatContacts.add(user);
             }
         } catch (SQLException e) {
-            System.err.println("Error fetching online users: " + e.getMessage());
+            System.err.println("Error fetching chat contacts: " + e.getMessage());
         }
-        return onlineUsers;
+
+        return chatContacts;
     }
+
+
 
     // DatabaseManager method for retrieving chat history
     public List<Message> getChatHistory(String senderUsername, String receiverUsername) {
@@ -185,8 +201,8 @@ class DatabaseManager {
     }
 
 
-    // Create a group chat
-    public boolean createGroupChat(String roomName, String createdByUsername, List<String> participants) {
+    // Create a group chat and add the creator as a participant
+    public boolean createGroupChat(String roomName, String createdByUsername) {
         int createdBy = getUserIdByUsername(createdByUsername);
 
         if (createdBy == -1) {
@@ -195,46 +211,31 @@ class DatabaseManager {
         }
 
         String query = "INSERT INTO GroupChat (RoomName, CreatedBy) VALUES (?, ?)";
-        try {
-            connection.setAutoCommit(false); // Disable autocommit
+        try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, roomName);
+            stmt.setInt(2, createdBy);
+            stmt.executeUpdate();
 
-            try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
-                stmt.setString(1, roomName);
-                stmt.setInt(2, createdBy);
-                stmt.executeUpdate();
+            // Retrieve the generated ChatRoomID
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                int chatRoomId = rs.getInt(1);
 
-                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        int chatRoomID = generatedKeys.getInt(1);
-                        System.out.println("Group chat created with ID: " + chatRoomID);
-
-                        // Add the creator as a participant
-                        addParticipantToGroupChat(roomName, createdByUsername);
-
-                        connection.commit(); // Commit the transaction
-                        return true;
-                    } else {
-                        connection.rollback(); // Rollback the transaction
-                        throw new SQLException("Creating group chat failed, no ID obtained.");
-                    }
+                // Add the creator as a participant
+                String participantQuery = "INSERT INTO GroupChatParticipant (ChatRoomID, UserID) VALUES (?, ?)";
+                try (PreparedStatement participantStmt = connection.prepareStatement(participantQuery)) {
+                    participantStmt.setInt(1, chatRoomId);
+                    participantStmt.setInt(2, createdBy);
+                    participantStmt.executeUpdate();
                 }
+                return true;
             }
         } catch (SQLException e) {
-            try {
-                connection.rollback(); // Rollback the transaction in case of error
-            } catch (SQLException rollbackException) {
-                System.err.println("Error rolling back transaction: " + rollbackException.getMessage());
-            }
             System.err.println("Error creating group chat: " + e.getMessage());
-            return false;
-        } finally {
-            try {
-                connection.setAutoCommit(true); // Enable autocommit
-            } catch (SQLException e) {
-                System.err.println("Error setting autocommit: " + e.getMessage());
-            }
         }
+        return false;
     }
+
     // Add a participant to a group chat
     public boolean addParticipantToGroupChat(String roomName, String participantUsername) {
         int userId = getUserIdByUsername(participantUsername);
@@ -256,6 +257,7 @@ class DatabaseManager {
             return false;
         }
     }
+
     // Get all group chats the user is a participant in
     public List<GroupChat> getUserGroups(String username) {
         List<GroupChat> groups = new ArrayList<>();
@@ -266,11 +268,11 @@ class DatabaseManager {
                 + " WHERE u.username = ?";
 
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setString(1, username);
+            stmt.setString(1, username); // Set the username for the query
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     String roomName = rs.getString("RoomName");
-                    groups.add(new GroupChat(roomName));
+                    groups.add(new GroupChat(roomName)); // Add the group object
                 }
             }
         } catch (SQLException e) {
@@ -279,52 +281,7 @@ class DatabaseManager {
 
         return groups;
     }
-    public List<User> getGroupParticipants(String roomName) {
-        List<User> participants = new ArrayList<>();
-        int chatRoomId = getChatRoomIdByRoomName(roomName);
 
-        if (chatRoomId == -1) {
-            System.err.println("Error: Invalid group name.");
-            return participants;
-        }
-
-        String query = "SELECT u.username, u.password, u.status FROM User u " +
-                "JOIN GroupChatParticipant gcp ON u.userID = gcp.UserID " +
-                "WHERE gcp.ChatRoomID = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setInt(1, chatRoomId);
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                String username = rs.getString("username");
-                String password = rs.getString("password");
-                String status = rs.getString("status");
-                participants.add(new User(username, password, status));
-            }
-        } catch (SQLException e) {
-            System.err.println("Error fetching group participants: " + e.getMessage());
-        }
-        return participants;
-    }
-
-    // Get all group chat names
-    /* public List<GroupChat> getAllGroups() {
-        List<GroupChat> groups = new ArrayList<>();
-        String query = "SELECT RoomName FROM GroupChat";
-
-        try (PreparedStatement stmt = connection.prepareStatement(query);
-             ResultSet rs = stmt.executeQuery()) {
-
-            while (rs.next()) {
-                String roomName = rs.getString("RoomName");
-                groups.add(new GroupChat(roomName)); // Add the group object instead of just the name
-            }
-
-        } catch (SQLException e) {
-            System.err.println("Error fetching group chat names: " + e.getMessage());
-        }
-
-        return groups;
-    }*/
 
     // Save a message in a group chat
     public void saveGroupMessage(String roomName, String senderUsername, String message) {
@@ -336,43 +293,51 @@ class DatabaseManager {
             return;
         }
 
-        String query = "INSERT INTO message (senderID, receiverID, content) VALUES (?, NULL, ?)";
+        String query = "INSERT INTO Message (senderID, receiverID, content, ChatRoomID) VALUES (?, NULL, ?, ?)";
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setInt(1, senderId);
             stmt.setString(2, message);
+            stmt.setInt(3, chatRoomId);
             stmt.executeUpdate();
-            System.out.println("Message saved successfully.");
         } catch (SQLException e) {
             System.err.println("Error saving group chat message: " + e.getMessage());
         }
     }
 
-    public List<Message> getGroupChatMessages(int chatRoomId) {
-        List<Message> groupMessages = new ArrayList<>();
+    public List<Message> getGroupChatMessages(String roomName) {
+        List<Message> messages = new ArrayList<>();
+        int chatRoomId = getChatRoomIdByRoomName(roomName);
+
+        if (chatRoomId == -1) {
+            System.err.println("Error: Invalid group name.");
+            return messages;
+        }
+
         String query = "SELECT u.username, m.content, m.timestamp " +
                 "FROM Message m " +
-                "JOIN GroupChatParticipant gcp ON gcp.UserID = m.senderID " +
                 "JOIN User u ON u.userID = m.senderID " +
-                "WHERE gcp.ChatRoomID = ? AND m.receiverID IS NULL " +
+                "WHERE m.ChatRoomID = ? " +
                 "ORDER BY m.timestamp";
-
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setInt(1, chatRoomId);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                String username = rs.getString("username");
+                String senderName = rs.getString("username");
                 String content = rs.getString("content");
                 String timestamp = rs.getString("timestamp");
-                groupMessages.add(new Message(username, content, timestamp));
+
+                Message message = new Message(senderName, content, timestamp);
+                messages.add(message);
             }
         } catch (SQLException e) {
             System.err.println("Error fetching group chat messages: " + e.getMessage());
         }
-        return groupMessages;
+        return messages;
     }
 
+
     // Helper method to get ChatRoomID by RoomName
-    public int getChatRoomIdByRoomName(String roomName) {
+    private int getChatRoomIdByRoomName(String roomName) {
         String query = "SELECT ChatRoomID FROM GroupChat WHERE RoomName = ?";
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setString(1, roomName);
@@ -408,11 +373,12 @@ class DatabaseManager {
             return -1;  // Return -1 to indicate failure
         }
 
-        // Save the message into the Message table
-        String query = "INSERT INTO Message (senderID, receiverID, content) VALUES (?, NULL, ?)";
+        // Save the message into the Message table, including the ChatRoomID
+        String query = "INSERT INTO Message (senderID, receiverID, content, ChatRoomID) VALUES (?, NULL, ?, ?)";
         try (PreparedStatement stmt = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setInt(1, senderId);
             stmt.setString(2, message);  // Message content
+            stmt.setInt(3, chatRoomId);  // Include ChatRoomID
             stmt.executeUpdate();
 
             // Retrieve the generated messageID
@@ -425,62 +391,5 @@ class DatabaseManager {
         }
         return -1;  // Return -1 in case of failure
     }
-
-
-
-    public List<Attachment> getAttachmentsForMessage(int messageID) {
-        List<Attachment> attachments = new ArrayList<>();
-        String query = "SELECT * FROM Attachment WHERE messageID = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setInt(1, messageID);
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                Attachment attachment = new Attachment(
-                        rs.getInt("attachmentID"),
-                        rs.getInt("messageID"),
-                        rs.getString("filePath"),
-                        rs.getString("fileType"),
-                        rs.getInt("size")
-                );
-                attachments.add(attachment);
-            }
-        } catch (SQLException e) {
-            System.err.println("Error fetching attachments: " + e.getMessage());
-        }
-        return attachments;
-    }
-
-    // Check if a username already exists in the database
-    public boolean usernameExists(String username) {
-        String query = "SELECT COUNT(*) FROM user WHERE username = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getInt(1) > 0;
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    // Insert a new user into the database
-    public boolean createUser(User user) {
-        String query = "INSERT INTO user (username, password, full_name) VALUES (?, ?, ?)";
-
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
-            stmt.setString(1, user.getUsername());
-            stmt.setString(2, user.getPassword());
-            stmt.setString(3, user.getFullName());
-
-            int rowsAffected = stmt.executeUpdate();
-            return rowsAffected > 0;  // Returns true if user was successfully created
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-
 }
+
