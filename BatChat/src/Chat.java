@@ -1,4 +1,3 @@
-//package com.mycompany.batchat;
 import java.util.ArrayList;
 import java.util.List;
 
