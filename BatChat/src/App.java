@@ -1,5 +1,3 @@
-//package com.mycompany.batchat;
-
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -15,12 +13,12 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.util.Pair;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -30,9 +28,12 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+
         // Create DatabaseManager instance and connect
         DatabaseManager dbManager = new DatabaseManager();
         dbManager.connectToDatabase();
+
+
 
         // --- LOGIN SCREEN ---
         GridPane loginLayout = new GridPane();
@@ -189,7 +190,7 @@ public class App extends Application {
         usersLayout.setPadding(new Insets(20));
         usersLayout.setAlignment(Pos.CENTER);
 
-        Label usersLabel = new Label("Online Users:");
+        Label usersLabel = new Label("Available Users:");
         usersLabel.setStyle("-fx-text-fill: #F8F8F8; -fx-font-size: 16px; -fx-font-weight: bold;");
         ListView<String> usersListView = new ListView<>();
         Button backToLoginButton = new Button("Logout");
@@ -236,81 +237,19 @@ public class App extends Application {
         Scene chatScene = new Scene(chatLayout, 400, 600);
 
 // --- GROUP CHAT LIST SCREEN ---
-        ListView<String> groupListView = new ListView<>();
         VBox groupListLayout = new VBox(10);
         groupListLayout.setPadding(new Insets(20));
         groupListLayout.setAlignment(Pos.CENTER);
 
         Label groupListLabel = new Label("Available Groups:");
         groupListLabel.setStyle("-fx-text-fill: #F8F8F8;");
-
-// Add the search textbox for groups
-        TextField searchGroupField = new TextField();
-        searchGroupField.setPromptText("Search groups...");
-
-// Add listener for search functionality
-        searchGroupField.textProperty().addListener((observable, oldValue, newValue) -> {
-            groupListView.getItems().clear();
-            List<String> filteredGroups = dbManager.getUserGroups(currentUser).stream()
-                    .map(GroupChat::getRoomName)
-                    .filter(name -> name.toLowerCase().contains(newValue.toLowerCase()))
-                    .collect(Collectors.toList());
-            groupListView.getItems().addAll(filteredGroups);
-        });
-
+        ListView<String> groupListView = new ListView<>();
         TextField groupNameField = new TextField();
         groupNameField.setPromptText("Enter group name...");
-
-// Add a button for creating a group
         Button createGroupButton = new Button("Create Group");
-        createGroupButton.setOnAction(e -> {
-            Dialog<Pair<String, List<String>>> dialog = new Dialog<>();
-            dialog.setTitle("Create Group");
 
-            // Set the button types
-            ButtonType createButtonType = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
-            dialog.getDialogPane().getButtonTypes().addAll(createButtonType, ButtonType.CANCEL);
-
-            // Create the group name and participants fields
-            GridPane grid = new GridPane();
-            grid.setHgap(10);
-            grid.setVgap(10);
-            grid.setPadding(new Insets(20, 150, 10, 10));
-
-            TextField groupNameFieldPopup = new TextField();
-            groupNameFieldPopup.setPromptText("Group Name");
-            ListView<String> participantsListView = new ListView<>();
-            participantsListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-            participantsListView.getItems().addAll(usersListView.getItems());
-
-            grid.add(new Label("Group Name:"), 0, 0);
-            grid.add(groupNameFieldPopup, 1, 0);
-            grid.add(new Label("Participants:"), 0, 1);
-            grid.add(participantsListView, 1, 1);
-
-            dialog.getDialogPane().setContent(grid);
-
-            // Convert the result to a group name and participants list when the create button is clicked
-            dialog.setResultConverter(dialogButton -> {
-                if (dialogButton == createButtonType) {
-                    return new Pair<>(groupNameFieldPopup.getText(), participantsListView.getSelectionModel().getSelectedItems());
-                }
-                return null;
-            });
-
-            Optional<Pair<String, List<String>>> result = dialog.showAndWait();
-            result.ifPresent(groupDetails -> {
-                String groupName = groupDetails.getKey();
-                List<String> participants = groupDetails.getValue();
-                if (!groupName.isEmpty() && !participants.isEmpty() && dbManager.createGroupChat(groupName, currentUser, participants)) {
-                    groupListView.getItems().add(groupName);
-                }
-            });
-        });
-
-        Button enterGroupButton = new Button("Enter Group");
         Button backToMainButton = new Button("Back");
-        groupListLayout.getChildren().addAll(searchGroupField, groupListLabel, groupListView, createGroupButton, enterGroupButton, backToMainButton);
+        groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, backToMainButton);
         Scene groupListScene = new Scene(groupListLayout, 400, 600);
         mainScene.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
@@ -323,7 +262,9 @@ public class App extends Application {
                 }
             }
         });
-// --- GROUP CHATROOM SCREEN ---
+
+
+// --- GROUP CHATROOM SCREEN --- 
         BorderPane groupChatLayout = new BorderPane();
         ListView<Node> groupMessageList = new ListView<>(); // Use ListView<Node> for text and images
         TextField groupMessageField = new TextField();
@@ -364,10 +305,7 @@ public class App extends Application {
             currentUser = null;
             primaryStage.setScene(loginScene);
         });
-
-
-
-// Group chat button action
+// --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
             List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
 
@@ -383,162 +321,172 @@ public class App extends Application {
 
 // --- Create group button action ---
         createGroupButton.setOnAction(e -> {
-            Dialog<Pair<String, List<String>>> dialog = new Dialog<>();
-            dialog.setTitle("Create Group");
+            // Prompt to enter the room name
+            TextInputDialog roomNameDialog = new TextInputDialog();
+            roomNameDialog.setHeaderText("Create Group Chat");
+            roomNameDialog.setContentText("Enter Room Name:");
+            Optional<String> roomResult = roomNameDialog.showAndWait();
 
-            ButtonType createButtonType = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
-            dialog.getDialogPane().getButtonTypes().addAll(createButtonType, ButtonType.CANCEL);
-
-            GridPane grid = new GridPane();
-            grid.setHgap(10);
-            grid.setVgap(10);
-            grid.setPadding(new Insets(20, 150, 10, 10));
-
-            TextField groupNameFieldPopup = new TextField();
-            groupNameFieldPopup.setPromptText("Group Name");
-            ListView<String> participantsListView = new ListView<>();
-            participantsListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-            participantsListView.getItems().addAll(dbManager.getOnlineUsers(currentUser).stream()
-                    .map(User::getUsername)
-                    .collect(Collectors.toList()));
-
-            grid.add(new Label("Group Name:"), 0, 0);
-            grid.add(groupNameFieldPopup, 1, 0);
-            grid.add(new Label("Participants:"), 0, 1);
-            grid.add(participantsListView, 1, 1);
-
-            dialog.getDialogPane().setContent(grid);
-
-            dialog.setResultConverter(dialogButton -> {
-                if (dialogButton == createButtonType) {
-                    return new Pair<>(groupNameFieldPopup.getText(), participantsListView.getSelectionModel().getSelectedItems());
+            roomResult.ifPresent(roomName -> {
+                if (roomName.isEmpty()) {
+                    showAlert("Error", "Room name cannot be empty!");
+                    return;
                 }
-                return null;
-            });
 
-            Optional<Pair<String, List<String>>> result = dialog.showAndWait();
-            result.ifPresent(groupDetails -> {
-                String groupName = groupDetails.getKey();
-                List<String> participants = groupDetails.getValue();
-                if (!groupName.isEmpty() && !participants.isEmpty() && dbManager.createGroupChat(groupName, currentUser, participants)) {
-                    groupListView.getItems().add(groupName);
-                }
-            });
-        });
+                // Create a new layout for adding participants
+                VBox participantLayout = new VBox(10);
+                participantLayout.setPadding(new Insets(10));
+                participantLayout.setAlignment(Pos.CENTER);
 
-// --- Enter group button action ---
-        enterGroupButton.setOnAction(e -> {
-            String selectedGroup = groupListView.getSelectionModel().getSelectedItem();
-            if (selectedGroup != null) {
-                int chatRoomId = dbManager.getChatRoomIdByRoomName(selectedGroup);
-                if (chatRoomId != -1) {
-                    groupMessageList.getItems().clear();
-                    List<Message> groupMessages = dbManager.getGroupChatMessages(chatRoomId);
-                    for (Message message : groupMessages) {
-                        String messageContent = message.getContent();
-                        File file = new File(messageContent);
+                Label participantLabel = new Label("Add Participants:");
+                participantLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
 
-                        if (file.exists()) {
-                            Label senderLabel = new Label(message.getSender() + ": ");
-                            groupMessageList.getItems().add(senderLabel);
+                ListView<String> participantListView = new ListView<>();
+                TextField participantField = new TextField();
+                participantField.setPromptText("Enter username to add...");
+                Button addParticipantButton = new Button("Add");
+                addParticipantButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
 
-                            Image image = new Image("file:" + file.getPath());
-                            ImageView imageView = new ImageView(image);
-                            imageView.setFitHeight(100);
-                            imageView.setPreserveRatio(true);
-                            groupMessageList.getItems().add(imageView);
+                Button createGroupFinalButton = new Button("Create Group");
+                createGroupFinalButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
+
+                // Layout organization
+                participantLayout.getChildren().addAll(participantLabel, participantListView, participantField, addParticipantButton, createGroupFinalButton);
+                Scene participantScene = new Scene(participantLayout, 400, 400);
+
+                Stage participantStage = new Stage();
+                participantStage.setScene(participantScene);
+                participantStage.setTitle("Add Participants");
+                participantStage.show();
+
+                List<String> selectedUsers = new ArrayList<>();
+
+                // Handle adding participants
+                addParticipantButton.setOnAction(ev -> {
+                    String enteredUsername = participantField.getText().trim();
+                    if (enteredUsername.isEmpty()) {
+                        showAlert("Error", "Username cannot be empty!");
+                    } else if (dbManager.usernameExists(enteredUsername)) {
+                        if (!selectedUsers.contains(enteredUsername)) {
+                            selectedUsers.add(enteredUsername);
+                            participantListView.getItems().add(enteredUsername);
+                            participantField.clear();
                         } else {
-                            groupMessageList.getItems().add(new Label(message.getSender() + ": " + messageContent));
+                            showAlert("Info", "User '" + enteredUsername + "' is already added.");
                         }
+                    } else {
+                        showAlert("Error", "User '" + enteredUsername + "' not found.");
+                    }
+                });
+
+                // Handle creating the group
+                createGroupFinalButton.setOnAction(ev -> {
+                    if (selectedUsers.size() < 2) {
+                        showAlert("Error", "A group chat must have at least 3 participants (including the creator).");
+                        return;
                     }
 
-                    groupSendButton.setOnAction(ev -> {
-                        String messageContent = groupMessageField.getText().trim();
-                        if (!messageContent.isEmpty()) {
-                            dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent);
-                            groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
-                            groupMessageField.clear();
-                        }
-                    });
+                    if (dbManager.createGroupChat(roomName, currentUser)) {
+                        selectedUsers.forEach(username -> dbManager.addParticipantToGroupChat(roomName, username));
+                        showAlert("Success", "Group created successfully with name '" + roomName + "'.");
+                        groupListView.getItems().add(roomName);
+                        participantStage.close();
+                    } else {
+                        showAlert("Error", "Failed to create the group.");
+                    }
+                });
+            });
+        });
 
-                    groupAttachButton.setOnAction(ev -> {
-                        FileChooser groupFileChooser = new FileChooser();
-                        groupFileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
-                        File file = groupFileChooser.showOpenDialog(primaryStage);
-                        if (file != null) {
-                            try {
-                                File targetDir = new File("src/main/resources/attachment");
-                                if (!targetDir.exists()) {
-                                    targetDir.mkdirs();
-                                }
+// --- Handle group chat selection from the groupListView ---
+        groupListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                String selectedGroup = newValue;
+                groupMessageList.getItems().clear(); // Clear the group message list
+                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Updated method for fetching group chat messages
 
-                                File targetFile = new File(targetDir, file.getName());
-                                Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                // Populate the message list with formatted messages
+                for (Message message : groupMessages) {
+                    String messageContent = message.getContent();
+                    File file = new File(messageContent);
 
-                                String filePath = targetFile.getPath();
-                                int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
+                    if (file.exists()) { // Check if it's a valid file path
+                        Label senderLabel = new Label(message.getSender() + ": ");
+                        groupMessageList.getItems().add(senderLabel);
 
-                                if (messageID != -1) {
-                                    String fileType = Files.probeContentType(file.toPath());
-                                    int fileSize = (int) file.length() / 1024;
-                                    dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
-
-                                    Label senderLabel = new Label(currentUser + ": ");
-                                    groupMessageList.getItems().add(senderLabel);
-
-                                    Image image = new Image("file:" + filePath);
-                                    ImageView imageView = new ImageView(image);
-                                    imageView.setFitHeight(100);
-                                    imageView.setPreserveRatio(true);
-                                    groupMessageList.getItems().add(imageView);
-                                } else {
-                                    System.err.println("Failed to save group message. Attachment not saved.");
-                                }
-                            } catch (IOException ex) {
-                                System.err.println("Error uploading file: " + ex.getMessage());
-                            }
-                        }
-                    });
-
-                    // Fetch and display participants
-                    List<User> participants = dbManager.getGroupParticipants(selectedGroup);
-                    participants.forEach(participant -> {
-                        Label participantLabel = new Label(participant.getUsername());
-                        groupMessageList.getItems().add(participantLabel);
-                    });
-
-                    /*addParticipantButton.setOnAction(ev -> {
-                        String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-                        if (selectedUser != null) {
-                            TextInputDialog dialog = new TextInputDialog();
-                            dialog.setTitle("Add to Group");
-                            dialog.setHeaderText("Add " + selectedUser + " to Group: " + selectedGroup);
-                            dialog.setContentText("Confirm group name:");
-
-                            Optional<String> result = dialog.showAndWait();
-                            if (result.isPresent()) {
-                                String groupName = result.get();
-                                if (groupName.equals(selectedGroup)) {
-                                    boolean success = dbManager.addParticipantToGroupChat(groupName, selectedUser);
-                                    if (success) {
-                                        new Alert(Alert.AlertType.INFORMATION, "User added to group successfully!").showAndWait();
-                                    } else {
-                                        new Alert(Alert.AlertType.ERROR, "Failed to add user to group.").showAndWait();
-                                    }
-                                } else {
-                                    new Alert(Alert.AlertType.ERROR, "Group name does not match selected group.").showAndWait();
-                                }
-                            }
-                        }
-                    });*/
-
-                    groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene));
-                    primaryStage.setScene(groupChatScene);
-                } else {
-                    new Alert(Alert.AlertType.ERROR, "Invalid group selected.").showAndWait();
+                        Image image = new Image("file:" + file.getPath());
+                        ImageView imageView = new ImageView(image);
+                        imageView.setFitHeight(100);
+                        imageView.setPreserveRatio(true);
+                        groupMessageList.getItems().add(imageView);
+                    } else {
+                        groupMessageList.getItems().add(new Label(message.getSender() + ": " + messageContent));
+                    }
                 }
+
+                // Set up message sending
+                groupSendButton.setOnAction(ev -> {
+                    String messageContent = groupMessageField.getText().trim();
+                    if (!messageContent.isEmpty()) {
+                        dbManager.saveGroupMessage(selectedGroup, currentUser, messageContent); // Save text message
+                        groupMessageList.getItems().add(new Label(currentUser + ": " + messageContent));
+                        groupMessageField.clear();
+                    }
+                });
+
+                // Handle file attachment
+                groupAttachButton.setOnAction(ev -> {
+                    FileChooser groupFileChooser = new FileChooser();
+                    groupFileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+                    File file = groupFileChooser.showOpenDialog(primaryStage);
+                    if (file != null) {
+                        try {
+                            // Save file to attachment directory
+                            File targetDir = new File("resources/attachment");
+                            if (!targetDir.exists()) {
+                                targetDir.mkdirs();
+                            }
+
+                            File targetFile = new File(targetDir, file.getName());
+                            Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                            // Save the file path as the message content
+                            String filePath = targetFile.getPath();
+                            int messageID = dbManager.saveGroupMessageWithAttachment(selectedGroup, currentUser, filePath, filePath);
+
+                            if (messageID != -1) {
+                                // Save attachment metadata
+                                String fileType = Files.probeContentType(file.toPath());
+                                int fileSize = (int) file.length() / 1024; // File size in KB
+                                dbManager.saveAttachment(messageID, filePath, fileType, fileSize);
+
+                                // Display the attachment in the chat
+                                Label senderLabel = new Label(currentUser + ": ");
+                                groupMessageList.getItems().add(senderLabel);
+
+                                Image image = new Image("file:" + filePath);
+                                ImageView imageView = new ImageView(image);
+                                imageView.setFitHeight(100);
+                                imageView.setPreserveRatio(true);
+                                groupMessageList.getItems().add(imageView);
+                            } else {
+                                System.err.println("Failed to save group message. Attachment not saved.");
+                            }
+                        } catch (IOException ex) {
+                            System.err.println("Error uploading file: " + ex.getMessage());
+                        }
+                    }
+                });
+
+                // Back button to go back to the group list
+                groupBackButton.setOnAction(ev -> primaryStage.setScene(groupListScene));
+
+                // Transition to the selected group chat scene
+                primaryStage.setScene(groupChatScene);
             }
         });
+
+// Handle keyboard events for Enter and Back buttons
         groupChatScene.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
                 if (groupSendButton.isFocused()) {
@@ -548,6 +496,7 @@ public class App extends Application {
                 }
             }
         });
+
         // --- Back to main button action ---
         backToMainButton.setOnAction(e -> primaryStage.setScene(mainScene));
         // --- Private Chat List Screen ---
@@ -566,7 +515,7 @@ public class App extends Application {
 
 // --- Private Chat Button Action ---
         privateChatButton.setOnAction(e -> {
-            List<User> contacts = dbManager.getOnlineUsers(currentUser);
+            List<User> contacts = dbManager.getChatContacts(currentUser);
 
 
             List<String> usernames = contacts.stream()
@@ -642,7 +591,7 @@ public class App extends Application {
                     if (file != null) {
                         try {
                             // Create directory to store the file if it doesn't exist
-                            File targetDir = new File("src/main/resources/attachment");
+                            File targetDir = new File("resources/attachment");
                             if (!targetDir.exists()) {
                                 targetDir.mkdirs(); // Create directories if they don't exist
                             }
@@ -717,176 +666,20 @@ public class App extends Application {
                     Label textLabel = new Label(chat); // Wrap each string in a Label
                     messageList.getItems().add(textLabel); // Add the Label to the message list
                 });
-
-                // Send button action
-                sendButton.setOnAction(ev -> {
-                    String messageContent = messageField.getText().trim();
-                    if (!messageContent.isEmpty()) {
-                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
-                        if (messageID != -1) {
-                            Label textLabel = new Label(currentUser + ": " + messageContent);
-                            messageList.getItems().add(textLabel); // Display in the chat using currentUser's username
-                            messageField.clear();                               // Clear the input field
-                        } else {
-                            System.err.println("Failed to save the message.");
-                        }
-                    }
-                });
-
-                // Back button action
-                backButton.setOnAction(ev -> primaryStage.setScene(usersScene)); // Switch back to user list scene
-                primaryStage.setScene(chatScene);                                // Switch to chat scene
             }
         });
 
-// Users List View Click Event
-        usersListView.setOnMouseClicked(event -> {
-            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-            if (selectedUser != null) {
-                // Clear previous messages
-                messageList.getItems().clear();
-
-                // Fetch and map chat history for the selected user to displayable strings using streams
-                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
-                List<String> displayableChatHistory = chatHistory.stream()
-                        .map(message -> message.getSender() + ": " + message.getContent())  // Format as "sender: content"
-                        .collect(Collectors.toList()); // Collect the result into a list
-                messageList.getItems().clear(); // Clear any existing items
-                displayableChatHistory.forEach(chat -> {
-                    Label textLabel = new Label(chat); // Wrap each string in a Label
-                    messageList.getItems().add(textLabel); // Add the Label to the message list
-                });
-
-
-                // Send button action (single instance per user interaction)
-                sendButton.setOnAction(ev -> {
-                    String messageContent = messageField.getText().trim();
-                    if (!messageContent.isEmpty()) {
-                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save the message
-                        if (messageID != -1) {
-                            Label textLabel = new Label(currentUser + ": " + messageContent);
-                            messageList.getItems().add(textLabel);
-                            messageField.clear(); // Clear input field
-                        } else {
-                            System.err.println("Failed to save the message.");
-                        }
-                    }
-                });
-
-                // Back button action
-                backButton.setOnAction(ev -> primaryStage.setScene(usersScene)); // Go back to users list scene
-                primaryStage.setScene(chatScene);                                // Switch to chat scene
-            }
-        });
-
-
-// Handle Enter key for navigation
-        privateChatListScene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER) {
-                if (privateChatBackButton.isFocused()) {
-                    privateChatBackButton.fire();
-                }
-            }
-        });
-
-// Back Button in Private Chat List
-        privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
-
-// Users list action
-        usersListView.setOnMouseClicked(event -> {
-            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-            if (selectedUser != null) {
-                // Clear the message list
-                messageList.getItems().clear();
-
-
-                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
-                chatHistory.forEach(message -> {
-                    Label textLabel = new Label(message.getSender() + ": " + message.getContent());
-                    messageList.getItems().add(textLabel);
-                });
-
-                // Send button action
-                sendButton.setOnAction(ev -> {
-                    String messageContent = messageField.getText().trim();
-                    if (!messageContent.isEmpty()) {
-                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
-                        if (messageID != -1) {
-                            Label textLabel = new Label(currentUser + ": " + messageContent);
-                            messageList.getItems().add(textLabel);
-                            messageField.clear();
-                        } else {
-                            System.err.println("Failed to save the message.");
-                        }
-                    }
-                });
-
-                // Back button action
-                backButton.setOnAction(ev -> primaryStage.setScene(usersScene));
-                primaryStage.setScene(chatScene);
-            }
-        });
-
-
-// Handle Enter key for navigation
-        privateChatListScene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER) {
-                if (privateChatBackButton.isFocused()) {
-                    privateChatBackButton.fire();
-                }
-            }
-        });
-
-// Back Button in Private Chat List
-        privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
-
-// Users list action
-        usersListView.setOnMouseClicked(event -> {
-            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-            if (selectedUser != null) {
-                // Clear the message list
-                messageList.getItems().clear();
-
-                // Fetch and map chat history to displayable strings using streams
-                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
-                List<String> displayableChatHistory = chatHistory.stream()
-                        .map(message -> message.getSender() + " (" + message.getTimestamp() + "): " + message.getContent())
-                        .collect(Collectors.toList());
-                messageList.getItems().clear(); // Clear any existing items
-                displayableChatHistory.forEach(chat -> {
-                    Label textLabel = new Label(chat); // Wrap each string in a Label
-                    messageList.getItems().add(textLabel); // Add the Label to the message list
-                });
-
-
-                // Send button action
-                sendButton.setOnAction(ev -> {
-                    String messageContent = messageField.getText().trim();
-                    if (!messageContent.isEmpty()) {
-                        int messageID = dbManager.saveMessage(currentUser, selectedUser, messageContent); // Save message
-                        if (messageID != -1) {
-                            Label textLabel = new Label(currentUser + ": " + messageContent);
-                            messageList.getItems().add(textLabel);
-
-                            messageField.clear();
-                        } else {
-                            System.err.println("Failed to save the message.");
-                        }
-                    }
-                });
-
-                // Back button action
-                backButton.setOnAction(ev -> primaryStage.setScene(usersScene));
-                primaryStage.setScene(chatScene);
-            }
-        });
-
-
-        primaryStage.setTitle("BatChat");
         primaryStage.setScene(loginScene);
         primaryStage.show();
 
         primaryStage.setOnCloseRequest(e -> dbManager.closeConnection());
+    }
+
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 
     public static void main(String[] args) {
