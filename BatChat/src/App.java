@@ -1,27 +1,21 @@
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
+import java.util.*;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
+import javafx.scene.Node;
 
 public class App extends Application {
     private String currentUser;
@@ -41,10 +35,10 @@ public class App extends Application {
         loginLayout.setHgap(10);
         loginLayout.setVgap(10);
         loginLayout.setAlignment(Pos.CENTER);
-        loginLayout.setStyle("-fx-background-color: black;");
+        loginLayout.setStyle("-fx-background-color: #434343;");
 
         // Load the logo image
-        Image logo = new Image("BatChat.jpg");
+        Image logo = new Image("/images/BatChat_Logo(no_bg).png");
         ImageView logoView = new ImageView(logo);
         logoView.setFitHeight(300);
         logoView.setFitWidth(300);
@@ -78,17 +72,21 @@ public class App extends Application {
         loginLayout.add(createAccountButton, 1, 4); // Position it below the login button
 
         Scene loginScene = new Scene(loginLayout, 400, 600);
-
-        // --- CREATE ACCOUNT SCREEN ---
+// --- CREATE ACCOUNT SCREEN ---
         VBox createAccountLayout = new VBox(10);
         createAccountLayout.setPadding(new Insets(20));
         createAccountLayout.setAlignment(Pos.CENTER);
-        createAccountLayout.setStyle("-fx-background-color: black;");
+        createAccountLayout.setStyle("-fx-background-color: #434343;");
 
-        Label fullNameLabel = new Label("Full Name:");
-        fullNameLabel.setStyle("-fx-text-fill: #F8F8F8;");
-        TextField fullNameField = new TextField();
-        fullNameField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+        Label firstNameLabel = new Label("First Name:");
+        firstNameLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        TextField firstNameField = new TextField();
+        firstNameField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        Label lastNameLabel = new Label("Last Name:");
+        lastNameLabel.setStyle("-fx-text-fill: #F8F8F8;");
+        TextField lastNameField = new TextField();
+        lastNameField.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
 
         Label createUsernameLabel = new Label("Username:");
         createUsernameLabel.setStyle("-fx-text-fill: #F8F8F8;");
@@ -107,42 +105,49 @@ public class App extends Application {
 
         Button createAccountSubmitButton = new Button("Create Account");
         createAccountSubmitButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
+
+        Button createAccbackButton = new Button("Back");
+        createAccbackButton.setStyle("-fx-background-color: #FAEBCD; -fx-text-fill: #434343;");
+
         Label accountMessage = new Label();
         accountMessage.setStyle("-fx-text-fill: red;");
 
         createAccountLayout.getChildren().addAll(
+                firstNameLabel, firstNameField,
+                lastNameLabel, lastNameField,
                 createUsernameLabel, createUsernameField,
-                fullNameLabel, fullNameField,
                 createPasswordLabel, createPasswordField,
                 confirmPasswordLabel, confirmPasswordField,
-                createAccountSubmitButton, accountMessage
+                createAccountSubmitButton,
+                createAccbackButton,
+                accountMessage
         );
 
         Scene createAccountScene = new Scene(createAccountLayout, 400, 600);
 
+// --- ACTION HANDLERS ---
 
-        // --- ACTION HANDLERS ---
-
-        // Go to Create Account screen
+// Go to Create Account screen
         createAccountButton.setOnAction(event -> {
             primaryStage.setScene(createAccountScene);
         });
 
-        // Handle account creation
+// Handle account creation
         createAccountSubmitButton.setOnAction(event -> {
             String newName = createUsernameField.getText().trim();
             String newPass = createPasswordField.getText().trim();
             String confirmPassword = confirmPasswordField.getText().trim();
-            String fullName = fullNameField.getText().trim();
+            String firstName = firstNameField.getText().trim();
+            String lastName = lastNameField.getText().trim();
 
             if (!newPass.equals(confirmPassword)) {
                 accountMessage.setText("Passwords do not match!");
-            } else if (newName.isEmpty() || newPass.isEmpty() || fullName.isEmpty()) {
+            } else if (newName.isEmpty() || newPass.isEmpty() || firstName.isEmpty() || lastName.isEmpty()) {
                 accountMessage.setText("All fields must be filled!");
             } else if (dbManager.usernameExists(newName)) {
                 accountMessage.setText("Username already exists!");
             } else {
-                User newUser = new User(newName, newPass, fullName);
+                User newUser = new User(newName, newPass, firstName, lastName);
                 boolean success = dbManager.createUser(newUser);  // Attempt to create the user
 
                 if (success) {
@@ -154,10 +159,14 @@ public class App extends Application {
             }
         });
 
+// Handle back button action
+        createAccbackButton.setOnAction(event -> {
+            primaryStage.setScene(loginScene); // Go back to the login page
+        });
 
-        // Set the initial scene to login screen
+// Set the initial scene to login screen
         primaryStage.setScene(loginScene);
-        primaryStage.setTitle("Login");
+        primaryStage.setTitle("BatChat");
         primaryStage.show();
 
         // --- MAIN SCREEN ---
@@ -185,20 +194,6 @@ public class App extends Application {
             }
         });
 
-        // --- ONLINE USERS SCREEN ---
-        VBox usersLayout = new VBox(10);
-        usersLayout.setPadding(new Insets(20));
-        usersLayout.setAlignment(Pos.CENTER);
-
-        Label usersLabel = new Label("Available Users:");
-        usersLabel.setStyle("-fx-text-fill: #F8F8F8; -fx-font-size: 16px; -fx-font-weight: bold;");
-        ListView<String> usersListView = new ListView<>();
-        Button backToLoginButton = new Button("Logout");
-        backToLoginButton.setStyle("-fx-background-color: #434343; -fx-text-fill: #F8F8F8; -fx-font-size: 14px;");
-        usersLayout.getChildren().addAll(usersLabel, usersListView, backToLoginButton);
-        usersLayout.setStyle("-fx-background-color: #434343;");
-        Scene usersScene = new Scene(usersLayout, 400, 600);
-
         // --- CHAT SCREEN ---
         ListView<Node> messageList = new ListView<>();
         TextField messageField = new TextField();
@@ -209,7 +204,7 @@ public class App extends Application {
         attachButton.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
         FileChooser fileChooser = new FileChooser();
         Button backButton = new Button("Back");
-        backButton.setStyle("-fx-background-color: black; -fx-text-fill: yellow; -fx-font-size: 14px;");
+        backButton.setStyle("-fx-background-color: #f7c873; -fx-text-fill: #434343; -fx-font-size: 14px;");
 
         // Add a header with "BatChat" title
         HBox headerBox = new HBox(100, backButton);
@@ -218,9 +213,9 @@ public class App extends Application {
         headerBox.setStyle("-fx-background-color: #434343;");
         headerBox.setPrefHeight(50);
 
-        Button headerTitle = new Button("BatChat");
+        Label headerTitle = new Label("BatChat");
         headerTitle.setStyle("-fx-background-color: transparent; -fx-text-fill: #F8F8F8; -fx-font-size: 18px;");
-        headerTitle.setDisable(true);
+        //headerTitle.setDisable(true);
         headerBox.getChildren().add(headerTitle);
 
         HBox inputBox = new HBox(10, attachButton, messageField, sendButton);
@@ -236,42 +231,40 @@ public class App extends Application {
 
         Scene chatScene = new Scene(chatLayout, 400, 600);
 
-// --- GROUP CHAT LIST SCREEN ---
+        chatScene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                sendButton.fire();
+            }
+        });
+
+        // --- GROUP CHAT LIST SCREEN ---
         VBox groupListLayout = new VBox(10);
         groupListLayout.setPadding(new Insets(20));
         groupListLayout.setAlignment(Pos.CENTER);
+        groupListLayout.setStyle("-fx-background-color: #434343;");
 
         Label groupListLabel = new Label("Available Groups:");
         groupListLabel.setStyle("-fx-text-fill: #F8F8F8;");
         ListView<String> groupListView = new ListView<>();
-        TextField groupNameField = new TextField();
-        groupNameField.setPromptText("Enter group name...");
+        groupListView.setStyle("-fx-background-color: #f7c873;");
+
         Button createGroupButton = new Button("Create Group");
+        createGroupButton.setStyle("-fx-background-color: #f7c873; -fx-text-fill: #434343; -fx-font-size: 14px;");
 
         Button backToMainButton = new Button("Back");
-        groupListLayout.getChildren().addAll(groupListLabel, groupListView, groupNameField, createGroupButton, backToMainButton);
+        backToMainButton.setStyle("-fx-background-color: #f7c873; -fx-text-fill: #434343; -fx-font-size: 14px;");
+        groupListLayout.getChildren().addAll(groupListLabel, groupListView, createGroupButton, backToMainButton);
         Scene groupListScene = new Scene(groupListLayout, 400, 600);
-        mainScene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER) {
-                if (privateChatButton.isFocused()) {
-                    privateChatButton.fire();
-                } else if (groupChatButton.isFocused()) {
-                    groupChatButton.fire();
-                } else if (logoutButton.isFocused()) {
-                    logoutButton.fire();
-                }
-            }
-        });
 
 
-// --- GROUP CHATROOM SCREEN --- 
+        // --- GROUP CHATROOM SCREEN ---
         BorderPane groupChatLayout = new BorderPane();
         ListView<Node> groupMessageList = new ListView<>(); // Use ListView<Node> for text and images
         TextField groupMessageField = new TextField();
         groupMessageField.setPromptText("Type a message...");
         Button groupSendButton = new Button("Send");
         Button groupBackButton = new Button("Back");
-        Button groupAttachButton = new Button("Attach"); // New attach button for group chat
+        Button groupAttachButton = new Button("📎"); // New attach button for group chat
 
         HBox groupInputBox = new HBox(10, groupMessageField, groupSendButton, groupAttachButton); // Include attach button
         groupInputBox.setPadding(new Insets(10));
@@ -280,7 +273,6 @@ public class App extends Application {
         HBox groupHeaderBox = new HBox(10, groupBackButton);
         groupHeaderBox.setPadding(new Insets(10));
         groupHeaderBox.setAlignment(Pos.CENTER_LEFT);
-
         groupChatLayout.setTop(groupHeaderBox);
         groupChatLayout.setCenter(groupMessageList);
         groupChatLayout.setBottom(groupInputBox);
@@ -298,6 +290,10 @@ public class App extends Application {
             } else {
                 loginMessage.setText("Invalid username or password!");
             }
+            usernameField.clear(); // Clear the username field
+            passwordField.clear(); // Clear the password field
+
+
         });
 
         // --- Logout button action ---
@@ -305,6 +301,9 @@ public class App extends Application {
             currentUser = null;
             primaryStage.setScene(loginScene);
         });
+
+
+
 // --- Group chat button action ---
         groupChatButton.setOnAction(e -> {
             List<GroupChat> groupChats = dbManager.getUserGroups(currentUser);
@@ -329,7 +328,7 @@ public class App extends Application {
 
             roomResult.ifPresent(roomName -> {
                 if (roomName.isEmpty()) {
-                    showAlert("Error", "Room name cannot be empty!");
+                    showAlert("Error", "Group Chat Name cannot be empty!");
                     return;
                 }
 
@@ -356,7 +355,7 @@ public class App extends Application {
 
                 Stage participantStage = new Stage();
                 participantStage.setScene(participantScene);
-                participantStage.setTitle("Add Participants");
+                participantStage.setTitle("Add Users");
                 participantStage.show();
 
                 List<String> selectedUsers = new ArrayList<>();
@@ -365,7 +364,7 @@ public class App extends Application {
                 addParticipantButton.setOnAction(ev -> {
                     String enteredUsername = participantField.getText().trim();
                     if (enteredUsername.isEmpty()) {
-                        showAlert("Error", "Username cannot be empty!");
+                        showAlert("Error", "Username CANNOT be empty!");
                     } else if (dbManager.usernameExists(enteredUsername)) {
                         if (!selectedUsers.contains(enteredUsername)) {
                             selectedUsers.add(enteredUsername);
@@ -382,13 +381,13 @@ public class App extends Application {
                 // Handle creating the group
                 createGroupFinalButton.setOnAction(ev -> {
                     if (selectedUsers.size() < 2) {
-                        showAlert("Error", "A group chat must have at least 3 participants (including the creator).");
+                        showAlert("Error", "A group chat must have at least 3 users");
                         return;
                     }
 
                     if (dbManager.createGroupChat(roomName, currentUser)) {
                         selectedUsers.forEach(username -> dbManager.addParticipantToGroupChat(roomName, username));
-                        showAlert("Success", "Group created successfully with name '" + roomName + "'.");
+                        showAlert("Success", "Group " + roomName + " created successfully.");
                         groupListView.getItems().add(roomName);
                         participantStage.close();
                     } else {
@@ -399,11 +398,14 @@ public class App extends Application {
         });
 
 // --- Handle group chat selection from the groupListView ---
-        groupListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue != null) {
-                String selectedGroup = newValue;
-                groupMessageList.getItems().clear(); // Clear the group message list
-                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup); // Updated method for fetching group chat messages
+        groupListView.setOnMouseClicked(event -> {
+            String selectedGroup = groupListView.getSelectionModel().getSelectedItem();
+            if (selectedGroup != null) {
+                // Clear the group message list before loading new content
+                groupMessageList.getItems().clear();
+
+                // Fetch chat history for the selected group
+                List<Message> groupMessages = dbManager.getGroupChatMessages(selectedGroup);
 
                 // Populate the message list with formatted messages
                 for (Message message : groupMessages) {
@@ -504,19 +506,30 @@ public class App extends Application {
         privateChatListLayout.setPadding(new Insets(20));
         privateChatListLayout.setAlignment(Pos.CENTER);
 
-        Label privateChatListLabel = new Label("Available Contacts:");
+        // Label for available contacts
+        Label privateChatListLabel = new Label("Available Users:");
         privateChatListLabel.setStyle("-fx-text-fill: #F8F8F8;");
+
+        // ListView for contacts
         ListView<String> privateChatListView = new ListView<>();
+
+        // Buttons for navigation
         Button privateChatBackButton = new Button("Back");
         privateChatBackButton.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
-        privateChatListLayout.getChildren().addAll(privateChatListLabel, privateChatListView, privateChatBackButton);
+        Button newChatButton = new Button("New Chat");
+        newChatButton.setStyle("-fx-background-color: #F7C873; -fx-text-fill: #434343;");
+
+        // Organize layout with spacing and padding
+        privateChatListLayout.getChildren().addAll(privateChatListLabel, privateChatListView, newChatButton, privateChatBackButton);
         privateChatListLayout.setStyle("-fx-background-color: #434343;");
+
+        // Create the scene for the private chat list
         Scene privateChatListScene = new Scene(privateChatListLayout, 400, 600);
 
-// --- Private Chat Button Action ---
+
+        // --- Private Chat Button Action ---
         privateChatButton.setOnAction(e -> {
             List<User> contacts = dbManager.getChatContacts(currentUser);
-
 
             List<String> usernames = contacts.stream()
                     .map(User::getUsername)
@@ -524,17 +537,46 @@ public class App extends Application {
 
             privateChatListView.getItems().setAll(usernames);
             primaryStage.setScene(privateChatListScene);
+
         });
 
 
-        chatScene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER) {
-                if (sendButton.isFocused()) {
-                    sendButton.fire();
-                } else if (backButton.isFocused()) {
-                    backButton.fire();
+        // --- New Chat Button Action ---
+        newChatButton.setOnAction(e -> {
+            // Prompt to enter the recipient's username
+            TextInputDialog usernameDialog = new TextInputDialog();
+            usernameDialog.setHeaderText("Start New Private Chat");
+            usernameDialog.setContentText("Enter recipient username:");
+            Optional<String> usernameResult = usernameDialog.showAndWait();
+
+            usernameResult.ifPresent(recipientUsername -> {
+                if (recipientUsername.isEmpty()) {
+                    showAlert("Error", "Username CANNOT be empty!");
+                    return;
                 }
-            }
+
+                // Check if the recipient username exists
+                if (!dbManager.usernameExists(recipientUsername)) {
+                    showAlert("Error", "User not found.");
+                    return;
+                }
+
+                // Check if a chat already exists with this user
+                if (dbManager.createPrivateChat(currentUser, recipientUsername)) {
+                    // Successfully created the chat
+                    showAlert("Success", "New chat created with " + recipientUsername);
+
+                    // Add the new chat to the list of available contacts
+                    List<User> contacts = dbManager.getChatContacts(currentUser);
+                    List<String> usernames = contacts.stream()
+                            .map(User::getUsername)
+                            .collect(Collectors.toList());
+                    privateChatListView.getItems().setAll(usernames);
+
+                } else {
+                    showAlert("Error", "Failed to create a private chat with " + recipientUsername);
+                }
+            });
         });
 
         privateChatListView.setOnMouseClicked(event -> {
@@ -568,6 +610,8 @@ public class App extends Application {
                         Label textLabel = new Label(message.getSender() + ": " + messageContent);
                         messageList.getItems().add(textLabel); // Add message to the chat
                     }
+
+
                 });
                 // Send button action
                 sendButton.setOnAction(ev -> {
@@ -582,7 +626,9 @@ public class App extends Application {
                             System.err.println("Failed to save the message.");
                         }
                     }
+
                 });
+
 
                 // Attachment button action
                 attachButton.setOnAction(e -> {
@@ -648,27 +694,6 @@ public class App extends Application {
 
 // Back Button in Private Chat List
         privateChatBackButton.setOnAction(e -> primaryStage.setScene(mainScene));
-
-// Users list action
-        usersListView.setOnMouseClicked(event -> {
-            String selectedUser = usersListView.getSelectionModel().getSelectedItem();
-            if (selectedUser != null) {
-                // Clear the message list
-                messageList.getItems().clear();
-
-                // Fetch and map chat history to displayable strings using streams
-                List<Message> chatHistory = dbManager.getChatHistory(currentUser, selectedUser);
-                List<String> displayableChatHistory = chatHistory.stream()
-                        .map(message -> message.getSender() + ": " + message.getContent())  // Only show username and message content
-                        .collect(Collectors.toList());
-                messageList.getItems().clear(); // Clear any existing items
-                displayableChatHistory.forEach(chat -> {
-                    Label textLabel = new Label(chat); // Wrap each string in a Label
-                    messageList.getItems().add(textLabel); // Add the Label to the message list
-                });
-            }
-        });
-
         primaryStage.setScene(loginScene);
         primaryStage.show();
 
