@@ -1,5 +1,7 @@
 import java.util.ArrayList;
 import java.util.List;
+import java.io.Serializable;
+
 
 // User Class
 class User {
@@ -7,25 +9,23 @@ class User {
     private String username;
     private String password;
     private String status;
-    private String fullName;
+    private String firstName;
+    private String lastName;
 
-    public User(int userID, String username, String password, String status,String fullName) {
+    public User(int userID, String username, String password, String status, String firstName, String lastName) {
         this.userID = userID;
         this.username = username;
         this.password = password;
         this.status = status;
-        this.fullName=fullName;
+        this.firstName = firstName;
+        this.lastName = lastName;
     }
 
-
-    public User(String username) {
-        this.username = username;
-    }
-
-    public User(String username, String password, String fullname) {
+    public User(String username, String password, String firstName, String lastName) {
         this.username = username;
         this.password = password;
-        this.fullName = fullname;
+        this.firstName = firstName;
+        this.lastName = lastName;
     }
 
     public int getUserID() {
@@ -60,22 +60,28 @@ class User {
         this.status = status;
     }
 
-    public void updateStatus(String status) {
-        this.status = status;
+    public String getFirstName() {
+        return firstName;
     }
 
-    public String getFullName() {
-        return fullName;
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
     }
 }
 
 
+
 // Message Class
-class Message {
+class Message implements Serializable {
+    private static final long serialVersionUID = 1L;
     private int messageID;
     private int senderID;
     private String sender;
@@ -230,9 +236,6 @@ class GroupChat extends Chat {
     public GroupChat(String roomName) {
         super();
         this.roomName=roomName;
-    }
-
-    public <E> GroupChat(int chatRoomId, String roomName, ArrayList<E> es) {
     }
 
     public String getRoomName() {
