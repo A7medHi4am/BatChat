@@ -6,7 +6,7 @@ import java.util.List;
 class DatabaseManager {
     private static final String URL = "jdbc:mysql://localhost:3306/batchat";
     private static final String USER = "root";
-    private static final String PASSWORD = "";
+    private static final String PASSWORD = "admin";
     private List<User> users;
 
     public DatabaseManager() {
@@ -83,17 +83,58 @@ class DatabaseManager {
 
     // Insert a new user into the database
     public boolean createUser(User user) {
-        String query = "INSERT INTO user (username, password, full_name) VALUES (?, ?, ?)";
+        String query = "INSERT INTO user (username, password, first_name, last_name) VALUES (?, ?, ?, ?)";
 
         try (PreparedStatement stmt = connection.prepareStatement(query)) {
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getPassword());
-            stmt.setString(3, user.getFullName());
+            stmt.setString(3, user.getFirstName());
+            stmt.setString(4, user.getLastName());
 
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;  // Returns true if user was successfully created
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+        return false;
+    }
+
+    // Create a private chat between two users
+    public boolean createPrivateChat(String senderUsername, String recipientUsername) {
+        int senderId = getUserIdByUsername(senderUsername);
+        int recipientId = getUserIdByUsername(recipientUsername);
+
+        if (senderId == -1 || recipientId == -1) {
+            System.err.println("Error: Invalid sender or recipient username.");
+            return false;
+        }
+
+        // Check if a private chat already exists between these two users
+        String checkQuery = "SELECT chatID FROM PrivateChat WHERE (user1ID = ? AND user2ID = ?) OR (user1ID = ? AND user2ID = ?)";
+        try (PreparedStatement stmt = connection.prepareStatement(checkQuery)) {
+            stmt.setInt(1, senderId);
+            stmt.setInt(2, recipientId);
+            stmt.setInt(3, recipientId);
+            stmt.setInt(4, senderId);
+
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                System.out.println("Private chat already exists between " + senderUsername + " and " + recipientUsername);
+                return false;  // A chat already exists
+            }
+        } catch (SQLException e) {
+            System.err.println("Error checking for existing private chat: " + e.getMessage());
+        }
+
+        // Create a new private chat
+        String query = "INSERT INTO PrivateChat (user1ID, user2ID) VALUES (?, ?)";
+        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            stmt.setInt(1, senderId);
+            stmt.setInt(2, recipientId);
+            stmt.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            System.err.println("Error creating private chat: " + e.getMessage());
         }
         return false;
     }
@@ -108,7 +149,7 @@ class DatabaseManager {
             return chatContacts;
         }
 
-        String query = "SELECT DISTINCT u.userID, u.username, u.password, u.status " +
+        String query = "SELECT DISTINCT u.userID, u.username, u.password, u.first_name, u.last_name " +
                 "FROM user u " +
                 "INNER JOIN PrivateChat pc ON (pc.user1ID = u.userID OR pc.user2ID = u.userID) " +
                 "WHERE (pc.user1ID = ? OR pc.user2ID = ?) AND u.userID != ?";
@@ -122,9 +163,10 @@ class DatabaseManager {
             while (rs.next()) {
                 String username = rs.getString("username");
                 String password = rs.getString("password");
-                String status = rs.getString("status");
+                String firstName = rs.getString("first_name");
+                String lastName = rs.getString("last_name");
 
-                User user = new User(username, password, status);
+                User user = new User(username, password, firstName, lastName);
                 chatContacts.add(user);
             }
         } catch (SQLException e) {
